@@ -16,72 +16,105 @@
     <div class="subtitle">红宝书 · 加载中…</div>
   </header>
 
-  <!-- 首页面板 -->
+    <!-- 首页面板 -->
   <div class="panel active" id="panel-home">
-    <!-- 卡片1：开始测试 -->
-    <div class="home-card" id="homeTestCard">
-      <div class="home-card-icon">📖</div>
-      <h3>开始测试</h3>
-      <p style="color:var(--text-light);font-size:0.85rem;margin:6px 0">四选一选择题模式，选错的单词记入今日单词本</p>
-      <div class="setting-row">
-        <label for="maxUnknown">错词上限：</label>
-        <input type="number" id="maxUnknown" value="20" min="1" max="200">
-        <span style="color:var(--text-light);font-size:0.85rem">个</span>
+    <!-- 统计摘要栏 -->
+    <div class="stats-bar" id="statsBar">
+      <div class="stat-chip">
+        <div class="sc-val" id="scTotalTests">0</div>
+        <div class="sc-lbl">测试次数</div>
       </div>
-      <button class="btn btn-primary" onclick="startSession()">开始测试</button>
-      <div id="resumeArea" style="margin-top:10px;display:none">
-        <button class="btn btn-secondary btn-sm" onclick="resumeSession()">继续上次测试</button>
-        <div style="font-size:0.75rem;color:var(--text-light);margin-top:4px" id="resumeInfo"></div>
+      <div class="stat-chip">
+        <div class="sc-val" id="scTotalWords">0</div>
+        <div class="sc-lbl">累计测词</div>
+      </div>
+      <div class="stat-chip">
+        <div class="sc-val" id="scWrongWords">0</div>
+        <div class="sc-lbl">收录生词</div>
       </div>
     </div>
 
-    <!-- 卡片2：错词本 -->
-    <div class="home-card" id="homeNotebookCard">
-      <div class="home-card-icon">📊</div>
-      <h3>错词本</h3>
-      <p style="color:var(--text-light);font-size:0.85rem;margin:6px 0" id="homeNotebookSummary">暂无测试记录</p>
-      <button class="btn btn-secondary" onclick="showPanel('notebook')">进入错词本</button>
+    <!-- 恢复测试横幅 -->
+    <div class="resume-banner" id="resumeBanner" style="display:none">
+      <div class="resume-info">
+        <span class="resume-icon">⏳</span>
+        <span id="resumeInfo">有未完成的测试</span>
+      </div>
+      <button class="btn btn-accent btn-sm" onclick="resumeSession()">继续测试</button>
     </div>
 
-    <!-- 底部统计 -->
-    <div id="overallStats" style="margin-top:16px;font-size:0.8rem;color:var(--text-light);text-align:center"></div>
+    <!-- 双卡片入口 -->
+    <div class="home-cards">
+      <div class="home-card" id="homeTestCard">
+        <div class="home-card-icon">📖</div>
+        <h3>开始测试</h3>
+        <p class="home-card-desc">随机抽取 · 四选一 · 错词收入今日单词本</p>
+        <div class="setting-row">
+          <label for="maxUnknown">错词上限</label>
+          <input type="number" id="maxUnknown" value="20" min="1" max="200">
+          <span class="setting-unit">个</span>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="startSession()">开始测试</button>
+      </div>
 
-    <div class="nav-links" style="margin-top:14px">
+      <div class="home-card" id="homeNotebookCard">
+        <div class="home-card-icon">📊</div>
+        <h3>错词本</h3>
+        <p class="home-card-desc" id="homeNotebookSummary">暂无测试记录</p>
+        <div class="nb-mini-preview" id="nbMiniPreview"></div>
+        <button class="btn btn-secondary btn-block" onclick="showPanel('notebook')">进入错词本</button>
+      </div>
+    </div>
+
+    <!-- 底部操作 -->
+    <div class="nav-links">
       <button class="nav-link" onclick="showPanel('history')">历史记录</button>
-      <button class="nav-link" onclick="resetAll()">重置全部数据</button>
+      <span class="nav-divider">·</span>
+      <button class="nav-link" onclick="resetAll()">重置数据</button>
     </div>
   </div>
 
   <!-- 测试面板 -->
   <div class="panel" id="panel-test">
-    <div class="word-card">
+    <!-- 顶部进度条 -->
+    <div class="test-topbar">
+      <div class="test-counter" id="testCounter">第 1 题</div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+      </div>
+      <div class="progress-text" id="progressText">准备开始…</div>
+    </div>
+
+    <!-- 单词大卡片 -->
+    <div class="word-card-large">
       <div class="word-display" id="wordText"></div>
       <div class="pron-display">
         <span class="uk" id="pronUk"></span>
         <span class="us" id="pronUs"></span>
       </div>
-      <div class="def-display" id="defText"></div>
+      <div class="def-reveal" id="defText"></div>
     </div>
 
     <!-- 选项区域 -->
     <div class="options-grid" id="optionsGrid"></div>
 
-    <div class="action-buttons" id="nextBtn" style="display:none">
-      <button class="btn btn-primary" onclick="nextWord()">下一个</button>
+    <!-- 下一题按钮 -->
+    <div class="next-btn-wrap" id="nextBtn" style="display:none">
+      <button class="btn btn-primary btn-lg" onclick="nextWord()">
+        下一题 <span style="font-size:0.8rem;opacity:0.7">Space</span>
+      </button>
     </div>
 
-    <div class="progress-bar-wrap">
-      <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
-    </div>
-    <div class="progress-text" id="progressText">准备开始…</div>
-    <div style="font-size:0.75rem;color:var(--text-light);margin-top:6px">
-      键盘：1-4 选择 · 空格 下一个
+    <!-- 键盘提示 -->
+    <div class="key-hints">
+      <span><kbd>1</kbd>-<kbd>4</kbd> 选择</span>
+      <span><kbd>Space</kbd> 下一题</span>
     </div>
 
-    <button class="nav-link" style="margin-top:16px" onclick="endSessionEarly()">提前结束本轮测试</button>
+    <button class="nav-link" style="margin-top:12px" onclick="endSessionEarly()">提前结束本轮测试</button>
   </div>
 
-  <!-- 结果面板 -->
+<!-- 结果面板 -->
   <div class="panel" id="panel-result">
     <h2 style="margin-bottom:4px">今日测试完成</h2>
     <p style="color:var(--text-light);font-size:0.9rem" id="resultDate"></p>
@@ -123,7 +156,7 @@
         <span class="uk" id="reviewPronUk"></span>
         <span class="us" id="reviewPronUs"></span>
       </div>
-      <div class="def-display show" id="reviewDef"></div>
+      <div class="def-reveal show" id="reviewDef"></div>
     </div>
     <div class="review-nav">
       <button class="nav-btn" onclick="reviewPrev()">◀</button>
@@ -133,7 +166,7 @@
     <button class="btn btn-secondary btn-sm" onclick="showPanel('result')">返回错词本</button>
   </div>
 
-  <!-- 错词本面板 -->
+    <!-- 错词本面板 -->
   <div class="panel" id="panel-notebook">
     <!-- 顶部栏 -->
     <div class="nb-topbar">
@@ -146,14 +179,41 @@
       </div>
     </div>
 
-    <!-- 日历 -->
-    <div class="nb-calendar" id="nbCalendar"></div>
+    <!-- 统计摘要 -->
+    <div class="nb-summary" id="nbSummary">
+      <div class="nb-summary-item">
+        <span class="nb-summary-val" id="nbSumTests">0</span>
+        <span class="nb-summary-lbl">测试次数</span>
+      </div>
+      <div class="nb-summary-divider"></div>
+      <div class="nb-summary-item">
+        <span class="nb-summary-val" id="nbSumWrong">0</span>
+        <span class="nb-summary-lbl">错词总数</span>
+      </div>
+      <div class="nb-summary-divider"></div>
+      <div class="nb-summary-item">
+        <span class="nb-summary-val" id="nbSumDays">0</span>
+        <span class="nb-summary-lbl">覆盖天数</span>
+      </div>
+    </div>
 
-    <!-- 折线图 -->
-    <div class="nb-chart-section" id="nbChartSection" style="display:none">
-      <h4 style="text-align:left;margin:0 0 8px">成长趋势</h4>
-      <canvas id="nbChart" width="560" height="200"></canvas>
-      <p style="font-size:0.8rem;color:var(--text-light);margin-top:6px;text-align:center" id="nbChartSummary"></p>
+    <!-- Tab切换：日历 / 图表 -->
+    <div class="nb-tabs">
+      <button class="nb-tab active" id="nbTabCal" onclick="switchNbTab('cal')">📅 日历</button>
+      <button class="nb-tab" id="nbTabChart" onclick="switchNbTab('chart')">📈 成长趋势</button>
+    </div>
+
+    <!-- 日历视图 -->
+    <div class="nb-tab-content active" id="nbTabContentCal">
+      <div class="nb-calendar" id="nbCalendar"></div>
+    </div>
+
+    <!-- 图表视图 -->
+    <div class="nb-tab-content" id="nbTabContentChart" style="display:none">
+      <div class="nb-chart-section" id="nbChartSection">
+        <canvas id="nbChart" width="560" height="200"></canvas>
+        <p id="nbChartSummary"></p>
+      </div>
     </div>
 
     <!-- 筛选后的测试记录 -->
@@ -162,7 +222,7 @@
     </div>
   </div>
 
-  <!-- 历史面板 -->
+<!-- 历史面板 -->
   <div class="panel" id="panel-history">
     <h3 style="margin-bottom:16px">历史记录</h3>
     <div class="history-list" id="historyList">

@@ -35,6 +35,9 @@ export function renderTestWord() {
   defEl.classList.remove('show');
   document.getElementById('nextBtn').style.display = 'none';
 
+  // 更新题号计数器
+  document.getElementById('testCounter').textContent = `第 ${session.cursor + 1} 题`;
+
   updateProgress();
 }
 
@@ -48,8 +51,9 @@ export function renderOptions(options) {
       <span class="option-text">${opt.text}</span>
     </button>
   `).join('');
-  // 启用所有选项
   grid.querySelectorAll('.option-btn').forEach(b => b.disabled = false);
+  // 隐藏下一题按钮
+  document.getElementById('nextBtn').style.display = 'none';
 }
 
 /** 显示答题反馈 */
@@ -108,11 +112,10 @@ export function renderResult() {
 
 // ===== 首页统计 =====
 export function renderOverallStats(historyList) {
-  const el = document.getElementById('overallStats');
-  if (!el) return;
-
   if (historyList.length === 0) {
-    el.textContent = '';
+    document.getElementById('scTotalTests').textContent = '0';
+    document.getElementById('scTotalWords').textContent = '0';
+    document.getElementById('scWrongWords').textContent = '0';
     return;
   }
   const uniqueWords = new Set();
@@ -121,9 +124,9 @@ export function renderOverallStats(historyList) {
     totalTested += (h.testedCount || 0);
     h.words.forEach(w => uniqueWords.add(w.w));
   });
-  el.innerHTML = `已进行 <strong>${historyList.length}</strong> 次测试 · `
-    + `累计测试 <strong>${totalTested}</strong> 词 · `
-    + `累计收录生词 <strong>${uniqueWords.size}</strong> 个（去重）`;
+  document.getElementById('scTotalTests').textContent = historyList.length;
+  document.getElementById('scTotalWords').textContent = totalTested;
+  document.getElementById('scWrongWords').textContent = uniqueWords.size;
 }
 
 // ===== 历史面板渲染 =====
@@ -183,19 +186,31 @@ let calYear, calMonth, calSelected; // 选中日期 'YYYY-MM-DD' 或 null
 /** 首页错词本卡片摘要 */
 export function renderHomeNotebookSummary(historyList) {
   const el = document.getElementById('homeNotebookSummary');
+  const preview = document.getElementById('nbMiniPreview');
   if (!el) return;
   if (historyList.length === 0) {
     el.textContent = '暂无测试记录';
+    if (preview) preview.innerHTML = '';
     return;
   }
   const last = historyList[historyList.length - 1];
   const lastDate = new Date(last.date);
   const dateStr = `${lastDate.getMonth() + 1}月${lastDate.getDate()}日`;
   const totalWrong = historyList.reduce((sum, h) => sum + h.words.length, 0);
-  el.textContent = `共 ${historyList.length} 次测试 · ${totalWrong} 个错词 · 最近 ${dateStr}`;
+  el.textContent = `${historyList.length} 次测试 · ${totalWrong} 个错词 · 最近 ${dateStr}`;
+
+  // 渲染最近3次测试的小预览
+  if (preview) {
+    const recent = historyList.slice(-3).reverse();
+    preview.innerHTML = recent.map(h => {
+      const d = new Date(h.date);
+      const ds = `${d.getMonth() + 1}/${d.getDate()}`;
+      return `<span style="margin:0 2px">${ds} 错${h.words.length}词</span>`;
+    }).join('<span style="color:var(--border);margin:0 2px">|</span>');
+  }
 }
 
-/** 渲染完整错词本：日历 + 图表 + 会话列表 */
+/** 渲染完整错词本：统计摘要 + 日历 + 图表 + 会话列表 */
 export function renderNotebook(historyList) {
   _nbHistory = historyList;
 
@@ -207,9 +222,32 @@ export function renderNotebook(historyList) {
     calSelected = null;
   }
 
+  renderNbSummary(historyList);
   renderCalendar(historyList);
   renderChart(historyList);
   renderNotebookSessions(historyList, calSelected);
+
+  // 默认显示日历tab
+  switchNbTab('cal');
+}
+
+/** 错词本统计摘要 */
+function renderNbSummary(historyList) {
+  if (historyList.length === 0) {
+    document.getElementById('nbSumTests').textContent = '0';
+    document.getElementById('nbSumWrong').textContent = '0';
+    document.getElementById('nbSumDays').textContent = '0';
+    return;
+  }
+  const days = new Set();
+  let totalWrong = 0;
+  historyList.forEach(h => {
+    days.add(getDateKey(new Date(h.date)));
+    totalWrong += h.words.length;
+  });
+  document.getElementById('nbSumTests').textContent = historyList.length;
+  document.getElementById('nbSumWrong').textContent = totalWrong;
+  document.getElementById('nbSumDays').textContent = days.size;
 }
 
 // ===== 日历 =====
@@ -300,10 +338,6 @@ window.calSelectDate = (key) => {
   refreshNotebook();
 };
 
-function refreshNotebook() {
-  renderCalendar(_nbHistory);
-  renderNotebookSessions(_nbHistory, calSelected);
-}
 
 // 缓存当前错词本所用的历史数据
 let _nbHistory = [];
@@ -316,11 +350,9 @@ function renderChart(historyList) {
   if (!section || !canvas || !summary) return;
 
   if (historyList.length < 2) {
-    section.style.display = 'none';
+    summary.textContent = '至少需要 2 次测试才能显示趋势图';
     return;
   }
-
-  section.style.display = 'block';
 
   const data = historyList.map((h, i) => ({
     x: i + 1,
@@ -480,14 +512,43 @@ function renderNotebookSessions(historyList, dateFilter) {
 
 // ===== 恢复测试按钮 =====
 export function renderResumeButton(saved) {
-  const area = document.getElementById('resumeArea');
+  const banner = document.getElementById('resumeBanner');
   const info = document.getElementById('resumeInfo');
-  if (!area || !info) return;
+  if (!banner || !info) return;
 
   if (saved) {
-    area.style.display = 'block';
+    banner.style.display = 'flex';
     info.textContent = `已测 ${saved.testedCount || 0} 词，收集错词 ${(saved.todayUnknown || []).length} / ${saved.maxUnknown} 个`;
   } else {
-    area.style.display = 'none';
+    banner.style.display = 'none';
   }
+}
+
+// ===== 错词本 Tab 切换 =====
+window.switchNbTab = (tab) => {
+  const tabCal = document.getElementById('nbTabCal');
+  const tabChart = document.getElementById('nbTabChart');
+  const contentCal = document.getElementById('nbTabContentCal');
+  const contentChart = document.getElementById('nbTabContentChart');
+
+  if (!tabCal || !tabChart || !contentCal || !contentChart) return;
+
+  if (tab === 'cal') {
+    tabCal.classList.add('active');
+    tabChart.classList.remove('active');
+    contentCal.style.display = 'block';
+    contentChart.style.display = 'none';
+  } else {
+    tabCal.classList.remove('active');
+    tabChart.classList.add('active');
+    contentCal.style.display = 'none';
+    contentChart.style.display = 'block';
+    // 切换时重新绘制图表以确保尺寸正确
+    renderChart(_nbHistory);
+  }
+};
+
+function refreshNotebook() {
+  renderCalendar(_nbHistory);
+  renderNotebookSessions(_nbHistory, calSelected);
 }
