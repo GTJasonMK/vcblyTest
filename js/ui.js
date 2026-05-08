@@ -25,6 +25,9 @@ export function renderTestWord() {
   const idx = session.order[session.cursor];
   if (idx === undefined || !allWords[idx]) return;
 
+  // 立即清空选项区，避免新单词+旧高亮的闪烁
+  document.getElementById('optionsGrid').innerHTML = '';
+
   const word = allWords[idx];
   const wordEl = document.getElementById('wordText');
   wordEl.classList.add('updating');
