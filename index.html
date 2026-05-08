@@ -85,7 +85,16 @@
         </div>
 
         <div class="word-card-large">
-          <div class="word-display" id="wordText"></div>
+          <div class="word-line">
+            <div class="word-display" id="wordText"></div>
+            <button class="audio-btn" id="wordAudioBtn" onclick="playCurrentWordAudio()" title="播放发音" aria-label="播放当前单词发音" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9v6h4l5 4V5L8 9H4z"></path>
+                <path d="M16 9.5a4 4 0 0 1 0 5"></path>
+                <path d="M18.5 7a7 7 0 0 1 0 10"></path>
+              </svg>
+            </button>
+          </div>
           <div class="pron-display">
             <span class="uk" id="pronUk"></span>
             <span class="us" id="pronUs"></span>
@@ -152,7 +161,16 @@
   <div class="panel" id="panel-review">
     <h3 style="margin-bottom:16px">复习今日错词</h3>
     <div class="review-card">
-      <div class="word-display" id="reviewWord"></div>
+      <div class="word-line">
+        <div class="word-display" id="reviewWord"></div>
+        <button class="audio-btn" id="reviewAudioBtn" onclick="playReviewWordAudio()" title="播放发音" aria-label="播放当前复习单词发音" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9v6h4l5 4V5L8 9H4z"></path>
+            <path d="M16 9.5a4 4 0 0 1 0 5"></path>
+            <path d="M18.5 7a7 7 0 0 1 0 10"></path>
+          </svg>
+        </button>
+      </div>
       <div class="pron-display">
         <span class="uk" id="reviewPronUk"></span>
         <span class="us" id="reviewPronUs"></span>
@@ -247,6 +265,7 @@
 </button>
 
 <script src="data/words_data.js"></script>
+<script src="data/audio_manifest.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

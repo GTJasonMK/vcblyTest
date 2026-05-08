@@ -462,6 +462,9 @@ body::before {
 .rw-detail-word {
   font-size: 1.6rem;
   font-weight: 700;
+}
+.rw-detail-head {
+  justify-content: center;
   margin-bottom: 6px;
 }
 .rw-detail-pron {
@@ -747,6 +750,73 @@ body::before {
   transition: opacity 0.15s ease;
 }
 .word-display.updating { opacity: 0; transform: translateY(-4px); }
+.word-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+.word-line .word-display { min-width: 0; }
+.audio-btn {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card-bg);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background var(--ease), border-color var(--ease), color var(--ease), transform var(--ease);
+}
+.audio-btn[hidden] { display: none; }
+.audio-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.audio-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  transform: translateY(-1px);
+}
+.audio-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+  transform: none;
+}
+.audio-btn.playing {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.audio-btn-inline {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  margin-left: 6px;
+}
+.audio-btn-inline svg {
+  width: 15px;
+  height: 15px;
+}
+.audio-btn-compact {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+  margin-left: 0;
+}
+.audio-btn-compact svg {
+  width: 13px;
+  height: 13px;
+}
 .pron-display {
   font-size: 0.82rem;
   color: var(--text-light);
@@ -919,6 +989,18 @@ body::before {
   border-radius: 4px;
 }
 .word-list-item:hover { background: var(--bg); }
+.wl-head,
+.history-word-row,
+.rw-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wl-main {
+  flex: 1;
+  min-width: 0;
+}
 .word-list-item .wl-word { font-size: 1.1rem; font-weight: 600; }
 .word-list-item .wl-pron {
   font-size: 0.82rem;
@@ -1405,4 +1487,3 @@ body::before {
   .stats-bar { grid-template-columns: repeat(3, 1fr); gap: 3px; }
   .result-stats { gap: 12px; }
 }
-

@@ -2,6 +2,44 @@
 
 import { PANEL, TOAST_DURATION } from './constants.js';
 import { allWords, session } from './state.js';
+import { getAudioPath, updateAudioButton } from './audio.js';
+
+const AUDIO_ICON = `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 9v6h4l5 4V5L8 9H4z"></path>
+    <path d="M16 9.5a4 4 0 0 1 0 5"></path>
+    <path d="M18.5 7a7 7 0 0 1 0 10"></path>
+  </svg>
+`;
+
+function escapeAttr(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function getStoredWordIndex(word) {
+  if (Number.isInteger(word?.idx)) return word.idx;
+  if (Number.isInteger(word?.wordIndex)) return word.wordIndex - 1;
+  return undefined;
+}
+
+function renderAudioButton(word, extraClass = '') {
+  const idx = getStoredWordIndex(word);
+  if (!getAudioPath(word, idx)) return '';
+
+  const indexAttr = Number.isInteger(idx) ? ` data-audio-index="${idx}"` : '';
+  const spelling = word?.w || '';
+  return `
+    <button class="audio-btn audio-btn-inline ${extraClass}" onclick="event.stopPropagation();playWordAudioFromButton(this)" data-audio-word="${escapeAttr(spelling)}"${indexAttr} title="播放发音" aria-label="播放 ${escapeAttr(spelling)} 发音">
+      ${AUDIO_ICON}
+    </button>
+  `;
+}
 
 // ===== 面板切换 =====
 export function showPanel(name) {
@@ -32,6 +70,7 @@ export function renderTestWord() {
   const wordEl = document.getElementById('wordText');
   wordEl.classList.add('updating');
   wordEl.textContent = word.w;
+  updateAudioButton(document.getElementById('wordAudioBtn'), word, idx);
   requestAnimationFrame(() => wordEl.classList.remove('updating'));
   document.getElementById('pronUk').textContent = word.uk ? `英 ${word.uk}` : '';
   document.getElementById('pronUs').textContent = word.us ? `美 ${word.us}` : '';
@@ -109,8 +148,13 @@ export function renderResult() {
   } else {
     listEl.innerHTML = words.map((w, i) => `
       <div class="word-list-item" onclick="this.querySelector('.wl-def').classList.toggle('show');this.classList.toggle('expanded')">
-        <span class="wl-word">${i + 1}. ${w.w}</span>
-        <span class="wl-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
+        <div class="wl-head">
+          <div class="wl-main">
+            <span class="wl-word">${i + 1}. ${w.w}</span>
+            <span class="wl-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
+          </div>
+          ${renderAudioButton(w)}
+        </div>
         <div class="wl-def">${w.d}</div>
       </div>
     `).join('');
@@ -154,8 +198,13 @@ export function renderHistory(historyList) {
         <div class="history-detail">
           ${h.words.map((w, j) => `
             <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:0.9rem">
-              <strong>${j + 1}. ${w.w}</strong>
-              <span style="color:var(--text-light);font-size:0.8rem">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
+              <div class="history-word-row">
+                <div>
+                  <strong>${j + 1}. ${w.w}</strong>
+                  <span style="color:var(--text-light);font-size:0.8rem">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
+                </div>
+                ${renderAudioButton(w)}
+              </div>
               <div style="color:var(--text-light);font-size:0.85rem;white-space:pre-line">${w.d}</div>
             </div>
           `).join('')}
@@ -170,6 +219,7 @@ export function renderReviewWord(index, total) {
   const w = session.todayUnknown[index];
   if (!w) return;
   document.getElementById('reviewWord').textContent = w.w;
+  updateAudioButton(document.getElementById('reviewAudioBtn'), w, getStoredWordIndex(w));
   document.getElementById('reviewPronUk').textContent = w.uk ? `英 ${w.uk}` : '';
   document.getElementById('reviewPronUs').textContent = w.us ? `美 ${w.us}` : '';
   document.getElementById('reviewDef').textContent = w.d;
@@ -406,6 +456,7 @@ function renderReviewSessionWords(sessionIdx) {
     <div class="nb-review-word" onclick="showWordDetail(${sessionIdx}, ${j})">
       <span class="rw-word">${j + 1}. ${w.w}</span>
       <span class="rw-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
+      ${renderAudioButton(w, 'audio-btn-compact')}
     </div>
   `).join('');
 
@@ -427,7 +478,10 @@ window.showWordDetail = (sessionIdx, wordIdx) => {
   const rightEl = document.getElementById('nbReviewRight');
   if (!rightEl) return;
   rightEl.innerHTML = `
-    <div class="rw-detail-word">${w.w}</div>
+    <div class="rw-detail-head">
+      <div class="rw-detail-word">${w.w}</div>
+      ${renderAudioButton(w)}
+    </div>
     <div class="rw-detail-pron">${w.uk ? '英 ' + w.uk : ''}${w.us ? ' 美 ' + w.us : ''}</div>
     <div class="rw-detail-def">${w.d}</div>
   `;
@@ -619,4 +673,3 @@ export function renderResumeButton(saved) {
     banner.style.display = 'none';
   }
 }
-

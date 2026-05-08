@@ -5,6 +5,7 @@ import { loadSettings, loadHistory, saveHistory, clearHistory, clearAll, loadThe
 import { setMaxUnknownInput } from './ui.js';
 import * as UI from './ui.js';
 import * as Session from './session.js';
+import { playWordAudioFromButton } from './audio.js';
 import { PANEL } from './constants.js';
 
 // ===== 主题管理 =====
@@ -69,9 +70,16 @@ window.resumeSession = () => Session.resumeSession();
 window.selectAnswer = (idx) => Session.selectAnswer(idx);
 window.nextWord = () => Session.nextWord();
 window.endSessionEarly = () => Session.endSessionEarly();
+window.playCurrentWordAudio = () => Session.playCurrentWordAudio();
 window.startReview = () => Session.startReview();
 window.reviewPrev = () => Session.reviewPrev();
 window.reviewNext = () => Session.reviewNext();
+window.playReviewWordAudio = () => Session.playReviewWordAudio();
+window.playWordAudioFromButton = (button) => {
+  if (!playWordAudioFromButton(button)) {
+    UI.toast('当前单词暂无音频');
+  }
+};
 
 window.showPanel = (name) => {
   UI.showPanel(name);
@@ -94,8 +102,7 @@ window.showPanel = (name) => {
 window.resetAll = () => {
   if (!confirm('确定重置全部数据（历史记录+设置）吗？此操作不可恢复。')) return;
   clearAll();
-  setMaxUnknownInput(20);
-  UI.toast('已重置全部数据');
+  location.reload();
 };
 
 window.clearHistory = () => {

@@ -4,7 +4,7 @@ import { allWords, session, getCurrentWord, getCurrentWordIndex, resetSession, r
 import { updateSettings } from './state.js';
 import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession } from './storage.js';
 import * as UI from './ui.js';
-import { PANEL } from './constants.js';
+import { playWordAudio } from './audio.js';
 
 /** Fisher-Yates洗牌 */
 function shuffle(arr) {
@@ -120,6 +120,17 @@ function showCurrentWord() {
   UI.renderOptions(options);
 }
 
+/** 播放当前测试单词发音 */
+export function playCurrentWordAudio() {
+  const idx = getCurrentWordIndex();
+  const word = allWords[idx];
+  if (!word) return;
+  const button = document.getElementById('wordAudioBtn');
+  if (!playWordAudio(word, idx, button)) {
+    UI.toast('当前单词暂无音频');
+  }
+}
+
 /** 用户选择答案 */
 export function selectAnswer(optIdx) {
   if (!session.active || session.answered) return;
@@ -199,7 +210,7 @@ export function endSession() {
   const history = loadHistory();
   history.push({
     date: new Date().toISOString(),
-    words: session.todayUnknown.map(w => ({ w: w.w, uk: w.uk, us: w.us, d: w.d })),
+    words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
     testedCount: session.testedCount,
     correctCount: session.correctCount,
   });
@@ -220,7 +231,7 @@ export function endSessionEarly() {
   const history = loadHistory();
   history.push({
     date: new Date().toISOString(),
-    words: session.todayUnknown.map(w => ({ w: w.w, uk: w.uk, us: w.us, d: w.d })),
+    words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
     testedCount: session.testedCount,
     correctCount: session.correctCount,
   });
@@ -254,5 +265,15 @@ export function reviewNext() {
   if (reviewIndex < session.todayUnknown.length - 1) {
     reviewIndex++;
     UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
+  }
+}
+
+/** 播放当前复习单词发音 */
+export function playReviewWordAudio() {
+  const word = session.todayUnknown[reviewIndex];
+  if (!word) return;
+  const button = document.getElementById('reviewAudioBtn');
+  if (!playWordAudio(word, word.idx, button)) {
+    UI.toast('当前单词暂无音频');
   }
 }

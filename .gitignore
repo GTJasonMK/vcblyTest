@@ -8,3 +8,29 @@ Thumbs.db
 
 # Claude
 .claude/
+AGENTS.md
+.agents/
+
+# Codex
+.codex/
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+
+# 音视频 & 大数据文件
+*.mp4
+*.m4a
+*.xlsx
+words.json
+word_audio/
+
+# 临时脚本 & 工作目录
+build_audio_review_dataset.py
+repair_audio_copy.py
+run_split.py
+split_audio.py
+split_audio_from_video.py
+.audio_review_work/
