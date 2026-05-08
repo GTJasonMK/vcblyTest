@@ -33,8 +33,9 @@ export function renderTestWord() {
   document.getElementById('pronUk').textContent = word.uk ? `英 ${word.uk}` : '';
   document.getElementById('pronUs').textContent = word.us ? `美 ${word.us}` : '';
 
-  // 隐藏上一题的释义和反馈
+  // 预填释义（隐藏状态），答题后直接 reveal
   const defEl = document.getElementById('defText');
+  defEl.textContent = word.d;
   defEl.classList.remove('show');
   document.getElementById('nextBtn').style.display = 'none';
 
