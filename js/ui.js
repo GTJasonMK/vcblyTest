@@ -98,12 +98,19 @@ export function renderOptions(options) {
     </button>
   `).join('');
   grid.querySelectorAll('.option-btn').forEach(b => b.disabled = false);
-  // 隐藏下一题按钮
   document.getElementById('nextBtn').style.display = 'none';
+  // 显示不认识按钮
+  const dk = document.getElementById('dontKnowWrap');
+  dk.style.display = 'block';
+  dk.querySelector('.btn-dont-know').disabled = false;
 }
 
 /** 显示答题反馈 */
 export function showAnswerFeedback(selectedIdx, correctIdx) {
+  // 隐藏不认识按钮
+  const dk = document.getElementById('dontKnowWrap');
+  dk.style.display = 'none';
+
   const buttons = document.querySelectorAll('#optionsGrid .option-btn');
   buttons.forEach(b => {
     b.disabled = true;

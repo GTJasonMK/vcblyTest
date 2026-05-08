@@ -68,6 +68,7 @@ function init() {
 window.startSession = () => Session.startSession();
 window.resumeSession = () => Session.resumeSession();
 window.selectAnswer = (idx) => Session.selectAnswer(idx);
+window.markUnknown = () => Session.markUnknown();
 window.nextWord = () => Session.nextWord();
 window.endSessionEarly = () => Session.endSessionEarly();
 window.playCurrentWordAudio = () => Session.playCurrentWordAudio();

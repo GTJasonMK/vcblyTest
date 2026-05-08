@@ -131,6 +131,40 @@ export function playCurrentWordAudio() {
   }
 }
 
+/** 不认识当前单词 —— 直接标记为错词，无需猜测 */
+export function markUnknown() {
+  if (!session.active || session.answered) return;
+  session.answered = true;
+  session.testedCount++;
+
+  const wordIdx = getCurrentWordIndex();
+  const word = allWords[wordIdx];
+
+  // 加入生词本
+  if (!session.todayUnknown.find(w => w.idx === wordIdx)) {
+    session.todayUnknown.push({
+      idx: wordIdx,
+      w: word.w,
+      uk: word.uk,
+      us: word.us,
+      d: word.d,
+    });
+  }
+
+  // 高亮正确选项，帮助学习
+  UI.showAnswerFeedback(-1, session.correctIdx);
+
+  UI.updateProgress();
+  session.awaitingNext = true;
+  autoSave();
+  document.getElementById('defText').classList.add('show');
+  document.getElementById('nextBtn').style.display = 'flex';
+
+  if (session.todayUnknown.length >= session.maxUnknown) {
+    setTimeout(() => endSession(), 600);
+  }
+}
+
 /** 用户选择答案 */
 export function selectAnswer(optIdx) {
   if (!session.active || session.answered) return;

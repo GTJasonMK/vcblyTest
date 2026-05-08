@@ -266,6 +266,34 @@ body::before {
 
 .options-grid { gap: 6px; }
 .option-btn { padding: 9px 10px; font-size: 0.82rem; }
+/* 不认识按钮 */
+.dont-know-wrap {
+  text-align: center;
+  margin-top: 2px;
+}
+.btn-dont-know {
+  padding: 6px 20px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.btn-dont-know:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.btn-dont-know:active { transform: scale(0.97); }
+.btn-dont-know:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 .next-btn-wrap { flex-shrink: 0; }
 
 /* 结果页 */
