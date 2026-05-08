@@ -793,11 +793,14 @@ body::before {
   color: var(--text);
   transition: all var(--ease);
   line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
 }
-.option-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  transform: translateX(4px);
+@media (hover: hover) {
+  .option-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    transform: translateX(4px);
+  }
 }
 .option-btn:active:not(:disabled) { transform: scale(0.985); }
 .option-btn:disabled { cursor: default; opacity: 0.85; }
