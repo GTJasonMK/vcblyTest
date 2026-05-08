@@ -11,13 +11,13 @@
 <div class="toast" id="toast"></div>
 
 <div class="container">
-  <header>
-    <h1>考研词汇随机测试</h1>
-    <div class="subtitle">红宝书 · 加载中…</div>
-  </header>
-
     <!-- 首页面板 -->
   <div class="panel active" id="panel-home">
+    <div class="home-header">
+      <h1>考研词汇随机测试</h1>
+      <div class="subtitle">红宝书</div>
+    </div>
+
     <!-- 统计摘要栏 -->
     <div class="stats-bar" id="statsBar">
       <div class="stat-chip">
@@ -76,42 +76,43 @@
 
   <!-- 测试面板 -->
   <div class="panel" id="panel-test">
-    <!-- 顶部进度条 -->
-    <div class="test-topbar">
-      <div class="test-counter" id="testCounter">第 1 题</div>
-      <div class="progress-bar-wrap">
-        <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+    <div class="test-body">
+      <!-- 左栏：状态信息 + 单词 -->
+      <div class="test-left">
+        <div class="test-meta-top">
+          <span class="test-counter" id="testCounter">第 1 题</span>
+          <button class="nav-link" onclick="endSessionEarly()">提前结束</button>
+        </div>
+
+        <div class="word-card-large">
+          <div class="word-display" id="wordText"></div>
+          <div class="pron-display">
+            <span class="uk" id="pronUk"></span>
+            <span class="us" id="pronUs"></span>
+          </div>
+          <div class="def-reveal" id="defText"></div>
+        </div>
+
+        <div class="test-meta-bottom">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+          </div>
+          <div class="progress-text" id="progressText">准备开始…</div>
+        </div>
       </div>
-      <div class="progress-text" id="progressText">准备开始…</div>
-    </div>
 
-    <!-- 单词大卡片 -->
-    <div class="word-card-large">
-      <div class="word-display" id="wordText"></div>
-      <div class="pron-display">
-        <span class="uk" id="pronUk"></span>
-        <span class="us" id="pronUs"></span>
+      <!-- 右栏：选项 + 操作 -->
+      <div class="test-right">
+        <div class="options-grid" id="optionsGrid"></div>
+
+        <div class="next-btn-wrap" id="nextBtn" style="display:none">
+          <button class="btn btn-primary btn-lg" onclick="nextWord()">
+            下一题 <span class="next-key-hint">Space</span>
+          </button>
+          <span class="key-hints-inline"><kbd>1</kbd>-<kbd>4</kbd> 选择 · <kbd>Space</kbd> 下一题</span>
+        </div>
       </div>
-      <div class="def-reveal" id="defText"></div>
     </div>
-
-    <!-- 选项区域 -->
-    <div class="options-grid" id="optionsGrid"></div>
-
-    <!-- 下一题按钮 -->
-    <div class="next-btn-wrap" id="nextBtn" style="display:none">
-      <button class="btn btn-primary btn-lg" onclick="nextWord()">
-        下一题 <span style="font-size:0.8rem;opacity:0.7">Space</span>
-      </button>
-    </div>
-
-    <!-- 键盘提示 -->
-    <div class="key-hints">
-      <span><kbd>1</kbd>-<kbd>4</kbd> 选择</span>
-      <span><kbd>Space</kbd> 下一题</span>
-    </div>
-
-    <button class="nav-link" style="margin-top:12px" onclick="endSessionEarly()">提前结束本轮测试</button>
   </div>
 
 <!-- 结果面板 -->
@@ -166,7 +167,7 @@
     <button class="btn btn-secondary btn-sm" onclick="showPanel('result')">返回错词本</button>
   </div>
 
-    <!-- 错词本面板 -->
+      <!-- 错词本面板 -->
   <div class="panel" id="panel-notebook">
     <!-- 顶部栏 -->
     <div class="nb-topbar">
@@ -179,47 +180,43 @@
       </div>
     </div>
 
-    <!-- 统计摘要 -->
-    <div class="nb-summary" id="nbSummary">
-      <div class="nb-summary-item">
-        <span class="nb-summary-val" id="nbSumTests">0</span>
-        <span class="nb-summary-lbl">测试次数</span>
-      </div>
-      <div class="nb-summary-divider"></div>
-      <div class="nb-summary-item">
-        <span class="nb-summary-val" id="nbSumWrong">0</span>
-        <span class="nb-summary-lbl">错词总数</span>
-      </div>
-      <div class="nb-summary-divider"></div>
-      <div class="nb-summary-item">
-        <span class="nb-summary-val" id="nbSumDays">0</span>
-        <span class="nb-summary-lbl">覆盖天数</span>
-      </div>
-    </div>
+	    <!-- 卡片1：日历 / 成长趋势（Tab切换） -->
+	    <div class="nb-card" id="nbCardTop">
+	      <div class="nb-card-header">
+	        <div class="nb-tabs">
+	          <button class="nb-tab active" id="nbTabCal" onclick="switchNbTab('cal')">📅 测试日历</button>
+	          <button class="nb-tab" id="nbTabChart" onclick="switchNbTab('chart')">📈 成长趋势</button>
+	        </div>
+	        <span class="nb-card-sub" id="nbCalRange"></span>
+	      </div>
+	      <div class="nb-tab-content active" id="nbTabContentCal">
+	        <div class="nb-calendar" id="nbCalendar"></div>
+	      </div>
+	      <div class="nb-tab-content" id="nbTabContentChart" style="display:none">
+	        <div class="nb-chart-wrap">
+	          <canvas id="nbChart"></canvas>
+	          <p class="nb-chart-summary" id="nbChartSummary"></p>
+	        </div>
+	      </div>
+	    </div>
 
-    <!-- Tab切换：日历 / 图表 -->
-    <div class="nb-tabs">
-      <button class="nb-tab active" id="nbTabCal" onclick="switchNbTab('cal')">📅 日历</button>
-      <button class="nb-tab" id="nbTabChart" onclick="switchNbTab('chart')">📈 成长趋势</button>
-    </div>
-
-    <!-- 日历视图 -->
-    <div class="nb-tab-content active" id="nbTabContentCal">
-      <div class="nb-calendar" id="nbCalendar"></div>
-    </div>
-
-    <!-- 图表视图 -->
-    <div class="nb-tab-content" id="nbTabContentChart" style="display:none">
-      <div class="nb-chart-section" id="nbChartSection">
-        <canvas id="nbChart" width="560" height="200"></canvas>
-        <p id="nbChartSummary"></p>
-      </div>
-    </div>
-
-    <!-- 筛选后的测试记录 -->
-    <div class="nb-sessions" id="nbSessions">
-      <p style="color:var(--text-light);text-align:center">暂无测试记录</p>
-    </div>
+		    <!-- 卡片2：选中日期错词回顾 -->
+		    <div class="nb-card" id="nbCardReview">
+		      <div class="nb-card-header">
+		        <span class="nb-card-title" id="nbReviewTitle">📋 选择日期查看错词</span>
+		      </div>
+		      <!-- 顶栏：测试次数选择 -->
+		      <div class="nb-session-tabs" id="nbSessionTabs"></div>
+		      <!-- 下方：左右分栏 -->
+		      <div class="nb-review-split" id="nbReviewSplit">
+		        <div class="nb-review-left" id="nbReviewLeft">
+		          <p class="nb-empty-hint">点击日历中的日期查看详情</p>
+		        </div>
+		        <div class="nb-review-right" id="nbReviewRight">
+		          <p class="nb-empty-hint">点击错词查看释义</p>
+		        </div>
+		      </div>
+		    </div>
   </div>
 
 <!-- 历史面板 -->

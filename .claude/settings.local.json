@@ -4,7 +4,8 @@
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(python3 -m http.server 8765)",
       "Bash(python3 -m http.server 8766)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(python3 *)"
     ]
   }
 }

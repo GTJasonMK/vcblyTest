@@ -26,7 +26,10 @@ export function renderTestWord() {
   if (idx === undefined || !allWords[idx]) return;
 
   const word = allWords[idx];
-  document.getElementById('wordText').textContent = word.w;
+  const wordEl = document.getElementById('wordText');
+  wordEl.classList.add('updating');
+  wordEl.textContent = word.w;
+  requestAnimationFrame(() => wordEl.classList.remove('updating'));
   document.getElementById('pronUk').textContent = word.uk ? `英 ${word.uk}` : '';
   document.getElementById('pronUs').textContent = word.us ? `美 ${word.us}` : '';
 
@@ -182,6 +185,8 @@ export function setMaxUnknownInput(value) {
 
 // 日历状态
 let calYear, calMonth, calSelected; // 选中日期 'YYYY-MM-DD' 或 null
+let _nbHistory = []; // 缓存历史数据
+
 
 /** 首页错词本卡片摘要 */
 export function renderHomeNotebookSummary(historyList) {
@@ -199,7 +204,6 @@ export function renderHomeNotebookSummary(historyList) {
   const totalWrong = historyList.reduce((sum, h) => sum + h.words.length, 0);
   el.textContent = `${historyList.length} 次测试 · ${totalWrong} 个错词 · 最近 ${dateStr}`;
 
-  // 渲染最近3次测试的小预览
   if (preview) {
     const recent = historyList.slice(-3).reverse();
     preview.innerHTML = recent.map(h => {
@@ -210,11 +214,10 @@ export function renderHomeNotebookSummary(historyList) {
   }
 }
 
-/** 渲染完整错词本：统计摘要 + 日历 + 图表 + 会话列表 */
+/** 渲染完整错词本：顶部Tab卡片 + 下方错词回顾 */
 export function renderNotebook(historyList) {
   _nbHistory = historyList;
 
-  // 初始化日历状态（仅在初次进入时）
   if (calYear === undefined) {
     const now = new Date();
     calYear = now.getFullYear();
@@ -222,32 +225,14 @@ export function renderNotebook(historyList) {
     calSelected = null;
   }
 
-  renderNbSummary(historyList);
+  document.getElementById('nbCalRange').textContent = `${calYear}年${calMonth + 1}月`;
+
   renderCalendar(historyList);
-  renderChart(historyList);
-  renderNotebookSessions(historyList, calSelected);
+  renderBarChart(historyList);
+  renderReviewBody(historyList, calSelected);
 
   // 默认显示日历tab
   switchNbTab('cal');
-}
-
-/** 错词本统计摘要 */
-function renderNbSummary(historyList) {
-  if (historyList.length === 0) {
-    document.getElementById('nbSumTests').textContent = '0';
-    document.getElementById('nbSumWrong').textContent = '0';
-    document.getElementById('nbSumDays').textContent = '0';
-    return;
-  }
-  const days = new Set();
-  let totalWrong = 0;
-  historyList.forEach(h => {
-    days.add(getDateKey(new Date(h.date)));
-    totalWrong += h.words.length;
-  });
-  document.getElementById('nbSumTests').textContent = historyList.length;
-  document.getElementById('nbSumWrong').textContent = totalWrong;
-  document.getElementById('nbSumDays').textContent = days.size;
 }
 
 // ===== 日历 =====
@@ -256,9 +241,9 @@ function getDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-/** 按日期统计会话数与平均测试词数 */
+/** 按日期统计：每个日期下，当天测试次数、总测词数、总错词数 */
 function buildDateStats(historyList) {
-  const map = new Map(); // dateKey → {count, totalTested}
+  const map = new Map(); // dateKey → { count, totalTested, totalWrong }
   historyList.forEach(h => {
     const d = new Date(h.date);
     const key = getDateKey(d);
@@ -266,8 +251,13 @@ function buildDateStats(historyList) {
       const s = map.get(key);
       s.count++;
       s.totalTested += (h.testedCount || 0);
+      s.totalWrong += (h.words ? h.words.length : 0);
     } else {
-      map.set(key, { count: 1, totalTested: (h.testedCount || 0) });
+      map.set(key, {
+        count: 1,
+        totalTested: (h.testedCount || 0),
+        totalWrong: (h.words ? h.words.length : 0),
+      });
     }
   });
   return map;
@@ -280,7 +270,6 @@ function renderCalendar(historyList) {
   const dateStats = buildDateStats(historyList);
   const today = getDateKey(new Date());
 
-  const title = `${calYear}年${calMonth + 1}月`;
   const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=周日
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
 
@@ -288,39 +277,39 @@ function renderCalendar(historyList) {
 
   let html = `<div class="cal-header">
     <button class="cal-nav" onclick="calPrevMonth()">◀</button>
-    <span class="cal-title">${title}</span>
+    <span class="cal-title">${calYear}年${calMonth + 1}月</span>
     <button class="cal-nav" onclick="calNextMonth()">▶</button></div>`;
 
   html += '<div class="cal-grid">';
   dayLabels.forEach(l => { html += `<div class="cal-day-label">${l}</div>`; });
 
-  // 填充上月末的空白
   for (let i = 0; i < firstDay; i++) {
-    html += '<div class="cal-cell other-month"></div>';
+    html += '<div class="cal-cell other-month"><span class="cal-day"></span></div>';
   }
 
-  // 本月日期
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(calYear, calMonth, day);
     const key = getDateKey(date);
     const stats = dateStats.get(key);
     let cls = 'cal-cell';
+    let statsHtml = '';
     if (stats) {
       cls += ' has-sessions';
-      if (stats.totalTested / stats.count >= 60) cls += ' lvl-3';
-      else if (stats.totalTested / stats.count >= 35) cls += ' lvl-2';
+      const avgTested = stats.totalTested / stats.count;
+      if (avgTested >= 60) cls += ' lvl-3';
+      else if (avgTested >= 35) cls += ' lvl-2';
       else cls += ' lvl-1';
+      statsHtml = `<span class="cal-stats">${stats.count}次·测${stats.totalTested}·错${stats.totalWrong}</span>`;
     }
     if (key === today) cls += ' today';
     if (key === calSelected) cls += ' selected';
-    html += `<div class="${cls}" onclick="calSelectDate('${key}')">${day}</div>`;
+    html += `<div class="${cls}" onclick="calSelectDate('${key}')"><span class="cal-day">${day}</span>${statsHtml}</div>`;
   }
 
   html += '</div>';
   container.innerHTML = html;
 }
 
-// 日历操作（挂 window 供 onclick 调用）
 window.calPrevMonth = () => {
   calMonth--;
   if (calMonth < 0) { calMonth = 11; calYear--; }
@@ -335,38 +324,154 @@ window.calNextMonth = () => {
 
 window.calSelectDate = (key) => {
   calSelected = (calSelected === key) ? null : key;
+  _reviewSessionIdx = 0;  // 切换日期时重置到第1次测试
   refreshNotebook();
 };
 
+// ===== 卡片2：错词回顾（顶栏选次数 + 左右分栏） =====
 
-// 缓存当前错词本所用的历史数据
-let _nbHistory = [];
+let _reviewDaySessions = [];  // 当天所有测试会话
+let _reviewSessionIdx = 0;   // 当前选中的会话索引
 
-// ===== 折线图 =====
-function renderChart(historyList) {
-  const section = document.getElementById('nbChartSection');
-  const canvas = document.getElementById('nbChart');
-  const summary = document.getElementById('nbChartSummary');
-  if (!section || !canvas || !summary) return;
+function renderReviewBody(historyList, dateFilter) {
+  const titleEl = document.getElementById('nbReviewTitle');
+  const tabsEl = document.getElementById('nbSessionTabs');
+  const leftEl = document.getElementById('nbReviewLeft');
+  const rightEl = document.getElementById('nbReviewRight');
+  if (!titleEl || !tabsEl || !leftEl || !rightEl) return;
 
-  if (historyList.length < 2) {
-    summary.textContent = '至少需要 2 次测试才能显示趋势图';
+  if (!dateFilter) {
+    titleEl.textContent = '📋 选择日期查看错词';
+    tabsEl.innerHTML = '';
+    leftEl.innerHTML = '<p class="nb-empty-hint">点击日历中的日期查看详情</p>';
+    rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
     return;
   }
 
+  _reviewDaySessions = historyList.filter(h => {
+    return getDateKey(new Date(h.date)) === dateFilter;
+  });
+
+  if (_reviewDaySessions.length === 0) {
+    titleEl.textContent = `${dateFilter} — 无测试记录`;
+    tabsEl.innerHTML = '';
+    leftEl.innerHTML = '<p class="nb-empty-hint">该日期暂无测试记录</p>';
+    rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+    return;
+  }
+
+  const totalWrong = _reviewDaySessions.reduce((s, h) => s + (h.words ? h.words.length : 0), 0);
+  titleEl.textContent = `${dateFilter} — ${_reviewDaySessions.length}次测试 · ${totalWrong}个错词`;
+
+  // 渲染顶栏：测试次数选择tab
+  tabsEl.innerHTML = _reviewDaySessions.map((h, i) => {
+    const d = new Date(h.date);
+    const timeStr = d.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const wrongCount = h.words ? h.words.length : 0;
+    const cls = i === _reviewSessionIdx ? 'active' : '';
+    return `<button class="nb-session-tab ${cls}" onclick="selectReviewSession(${i})">
+      第${i + 1}次 ${timeStr}<br><small>${wrongCount}个错词</small>
+    </button>`;
+  }).join('');
+
+  // 渲染默认选中的会话
+  if (_reviewSessionIdx >= _reviewDaySessions.length) _reviewSessionIdx = 0;
+  renderReviewSessionWords(_reviewSessionIdx);
+}
+
+/** 渲染左侧错词列表 */
+function renderReviewSessionWords(sessionIdx) {
+  _reviewSessionIdx = sessionIdx;
+  const leftEl = document.getElementById('nbReviewLeft');
+  const rightEl = document.getElementById('nbReviewRight');
+  if (!leftEl || !rightEl) return;
+
+  // 更新tab高亮
+  document.querySelectorAll('.nb-session-tab').forEach((t, i) => {
+    t.classList.toggle('active', i === sessionIdx);
+  });
+
+  const session = _reviewDaySessions[sessionIdx];
+  if (!session || !session.words || session.words.length === 0) {
+    leftEl.innerHTML = '<p class="nb-empty-hint">该次测试全部正确 ✓</p>';
+    rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+    return;
+  }
+
+  leftEl.innerHTML = session.words.map((w, j) => `
+    <div class="nb-review-word" onclick="showWordDetail(${sessionIdx}, ${j})">
+      <span class="rw-word">${j + 1}. ${w.w}</span>
+      <span class="rw-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
+    </div>
+  `).join('');
+
+  rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+}
+
+/** 右侧显示选中错词释义 */
+window.showWordDetail = (sessionIdx, wordIdx) => {
+  const session = _reviewDaySessions[sessionIdx];
+  if (!session || !session.words) return;
+  const w = session.words[wordIdx];
+  if (!w) return;
+
+  // 高亮选中项
+  document.querySelectorAll('.nb-review-word').forEach((el, i) => {
+    el.classList.toggle('selected', i === wordIdx);
+  });
+
+  const rightEl = document.getElementById('nbReviewRight');
+  if (!rightEl) return;
+  rightEl.innerHTML = `
+    <div class="rw-detail-word">${w.w}</div>
+    <div class="rw-detail-pron">${w.uk ? '英 ' + w.uk : ''}${w.us ? ' 美 ' + w.us : ''}</div>
+    <div class="rw-detail-def">${w.d}</div>
+  `;
+};
+
+/** 切换测试会话 */
+window.selectReviewSession = (idx) => {
+  renderReviewSessionWords(idx);
+};
+
+// ===== 底部卡片：柱状图（错词率趋势） =====
+
+function renderBarChart(historyList) {
+  const canvas = document.getElementById('nbChart');
+  const summary = document.getElementById('nbChartSummary');
+  if (!canvas || !summary) return;
+
+  if (historyList.length < 2) {
+    summary.textContent = '至少需要 2 次测试才能显示趋势图';
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  // 数据：每次测试的 错词数/测词数 比值
   const data = historyList.map((h, i) => ({
     x: i + 1,
-    y: h.testedCount || 0,
+    ratio: (h.testedCount || 0) > 0 ? (h.words ? h.words.length : 0) / (h.testedCount || 1) : 0,
+    wrong: h.words ? h.words.length : 0,
+    tested: h.testedCount || 0,
   }));
 
-  const avg = Math.round(data.reduce((s, d) => s + d.y, 0) / data.length);
-  summary.textContent = `平均每轮测试 ${avg} 词才能集满错词上限（越高说明认识的词越多）`;
+  // 计算趋势：比较前一半和后一半的平均值
+  const mid = Math.floor(data.length / 2);
+  const firstHalf = data.slice(0, mid).reduce((s, d) => s + d.ratio, 0) / mid;
+  const secondHalf = data.slice(mid).reduce((s, d) => s + d.ratio, 0) / (data.length - mid);
+  const trendDown = secondHalf < firstHalf;
+  const trendText = trendDown
+    ? `错词率从 ${(firstHalf * 100).toFixed(0)}% 降至 ${(secondHalf * 100).toFixed(0)}%，学习效果显著！`
+    : `错词率保持平稳，继续加油！`;
+  summary.textContent = trendText;
 
   // 画布尺寸
   const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  const w = rect.width || 560;
-  const h = 200;
+  const container = canvas.parentElement;
+  const rect = container.getBoundingClientRect();
+  const w = rect.width - 32 || 600;
+  const h = 220;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   canvas.style.width = w + 'px';
@@ -376,18 +481,21 @@ function renderChart(historyList) {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
 
-  const pad = { top: 16, right: 20, bottom: 28, left: 44 };
+  const pad = { top: 20, right: 16, bottom: 36, left: 44 };
   const pw = w - pad.left - pad.right;
   const ph = h - pad.top - pad.bottom;
 
-  const maxY = Math.max(...data.map(d => d.y), 10);
-  const yRange = Math.ceil(maxY / 20) * 20;
+  const maxRatio = Math.max(...data.map(d => d.ratio), 0.1);
+  const yMax = Math.min(1, Math.ceil(maxRatio * 10) / 10 + 0.1);
 
-  const xScale = i => pad.left + (i / (data.length - 1)) * pw;
-  const yScale = v => pad.top + ph - (v / yRange) * ph;
+  const barWidth = Math.max(4, Math.min(24, pw / data.length * 0.6));
+  const gap = pw / data.length;
+
+  const yScale = v => pad.top + ph - (v / yMax) * ph;
 
   // 坐标轴
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--border').trim() || '#e0d5c1';
+  const borderColor = getComputedStyle(document.body).getPropertyValue('--border').trim() || '#e0d5c1';
+  ctx.strokeStyle = borderColor;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(pad.left, pad.top);
@@ -395,119 +503,103 @@ function renderChart(historyList) {
   ctx.lineTo(pad.left + pw, pad.top + ph);
   ctx.stroke();
 
-  // Y轴刻度
+  // Y轴刻度 (%)
   ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-light').trim() || '#8b7d6b';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
-  for (let v = 0; v <= yRange; v += Math.ceil(yRange / 4)) {
+  const ySteps = 5;
+  for (let i = 0; i <= ySteps; i++) {
+    const v = (yMax / ySteps) * i;
     const y = yScale(v);
-    ctx.fillText(v, pad.left - 6, y + 3);
+    ctx.fillText((v * 100).toFixed(0) + '%', pad.left - 6, y + 3);
     ctx.beginPath();
     ctx.moveTo(pad.left, y);
     ctx.lineTo(pad.left + pw, y);
-    ctx.strokeStyle = 'rgba(128,128,128,0.1)';
+    ctx.strokeStyle = 'rgba(128,128,128,0.08)';
     ctx.stroke();
   }
 
-  // X轴刻度
+  // X轴刻度（每5次标一个）
   ctx.textAlign = 'center';
-  const step = Math.max(1, Math.floor(data.length / 8));
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-light').trim() || '#8b7d6b';
+  ctx.font = '9px sans-serif';
+  const xStep = Math.max(1, Math.floor(data.length / 10));
   data.forEach((d, i) => {
-    if (i % step === 0 || i === data.length - 1) {
-      ctx.fillText(d.x, xScale(i), pad.top + ph + 16);
+    if (i % xStep === 0 || i === data.length - 1) {
+      const x = pad.left + i * gap + gap / 2;
+      ctx.fillText(d.x, x, pad.top + ph + 16);
     }
   });
 
-  // 折线
-  const lineColor = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#c0392b';
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  data.forEach((d, i) => {
-    const px = xScale(i);
-    const py = yScale(d.y);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  });
-  ctx.stroke();
+  // 柱状图
+  const barColor = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#c0392b';
+  const greenColor = getComputedStyle(document.body).getPropertyValue('--green').trim() || '#27ae60';
 
-  // 数据点
-  ctx.fillStyle = lineColor;
   data.forEach((d, i) => {
+    const x = pad.left + i * gap + (gap - barWidth) / 2;
+    const barH = Math.max(2, (d.ratio / yMax) * ph);
+    const y = pad.top + ph - barH;
+
+    // 渐变色：根据比值从绿到红
+    const ratio = d.ratio;
+    if (ratio < 0.3) ctx.fillStyle = greenColor;
+    else if (ratio < 0.6) ctx.fillStyle = '#e67e22';
+    else ctx.fillStyle = barColor;
+
+    ctx.fillRect(x, y, barWidth, barH);
+
+    // 柱顶标注比值
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-light').trim() || '#8b7d6b';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText((d.ratio * 100).toFixed(0) + '%', x + barWidth / 2, y - 4);
+  });
+
+  // 趋势线
+  if (data.length >= 3) {
+    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#c0392b';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
     ctx.beginPath();
-    ctx.arc(xScale(i), yScale(d.y), 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  // 平均线
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--green').trim() || '#27ae60';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([5, 5]);
-  ctx.beginPath();
-  ctx.moveTo(pad.left, yScale(avg));
-  ctx.lineTo(pad.left + pw, yScale(avg));
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  ctx.fillStyle = ctx.strokeStyle;
-  ctx.textAlign = 'left';
-  ctx.fillText(`平均 ${avg}`, pad.left + pw - 50, yScale(avg) - 6);
+    data.forEach((d, i) => {
+      const px = pad.left + i * gap + gap / 2;
+      const py = yScale(d.ratio);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
-// ===== 按日期筛选的错词会话列表 =====
-function renderNotebookSessions(historyList, dateFilter) {
-  const container = document.getElementById('nbSessions');
-  if (!container) return;
+// ===== Tab 切换 =====
+window.switchNbTab = (tab) => {
+  const tabCal = document.getElementById('nbTabCal');
+  const tabChart = document.getElementById('nbTabChart');
+  const contentCal = document.getElementById('nbTabContentCal');
+  const contentChart = document.getElementById('nbTabContentChart');
+  if (!tabCal || !tabChart || !contentCal || !contentChart) return;
 
-  let filtered = [...historyList].reverse();
-  if (dateFilter) {
-    filtered = filtered.filter(h => {
-      const d = new Date(h.date);
-      return getDateKey(d) === dateFilter;
-    });
+  if (tab === 'cal') {
+    tabCal.classList.add('active');
+    tabChart.classList.remove('active');
+    contentCal.style.display = 'flex';
+    contentChart.style.display = 'none';
+  } else {
+    tabCal.classList.remove('active');
+    tabChart.classList.add('active');
+    contentCal.style.display = 'none';
+    contentChart.style.display = 'flex';
+    // 切换时重新绘制图表以确保尺寸正确
+    renderBarChart(_nbHistory);
   }
+};
 
-  if (filtered.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-light);text-align:center">该日期暂无测试记录</p>';
-    return;
-  }
-
-  const title = dateFilter
-    ? `${dateFilter} 测试记录（${filtered.length} 次）`
-    : `全部测试记录（${filtered.length} 次）`;
-
-  let html = `<h4 style="text-align:left;margin:0 0 10px">${title}</h4>`;
-
-  html += filtered.map(h => {
-    const d = new Date(h.date);
-    const dateStr = d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const dayOfWeek = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
-
-    if (!h.words || h.words.length === 0) {
-      return `<div class="nb-session">
-        <div class="nb-session-header">
-          <span class="nb-session-date">${dateStr} 周${dayOfWeek}</span>
-          <span class="nb-session-stat">测试 ${h.testedCount || 0} 词 · 全部正确 ✓</span>
-        </div></div>`;
-    }
-
-    return `<div class="nb-session">
-      <div class="nb-session-header">
-        <span class="nb-session-date">${dateStr} 周${dayOfWeek}</span>
-        <span class="nb-session-stat">测试 ${h.testedCount || '?'} 词 · 错 ${h.words.length} 词</span>
-      </div>
-      <div class="nb-word-list">
-        ${h.words.map((w, j) => `
-          <div class="nb-word-item" onclick="this.classList.toggle('expanded')">
-            <span class="nb-word-idx">${j + 1}.</span>
-            <span class="nb-word-text">${w.w}</span>
-            <span class="nb-word-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
-            <div class="nb-word-def">${w.d}</div>
-          </div>`).join('')}
-      </div></div>`;
-  }).join('');
-
-  container.innerHTML = html;
+// ===== 内部刷新 =====
+function refreshNotebook() {
+  document.getElementById('nbCalRange').textContent = `${calYear}年${calMonth + 1}月`;
+  renderCalendar(_nbHistory);
+  renderReviewBody(_nbHistory, calSelected);
 }
 
 // ===== 恢复测试按钮 =====
@@ -524,31 +616,3 @@ export function renderResumeButton(saved) {
   }
 }
 
-// ===== 错词本 Tab 切换 =====
-window.switchNbTab = (tab) => {
-  const tabCal = document.getElementById('nbTabCal');
-  const tabChart = document.getElementById('nbTabChart');
-  const contentCal = document.getElementById('nbTabContentCal');
-  const contentChart = document.getElementById('nbTabContentChart');
-
-  if (!tabCal || !tabChart || !contentCal || !contentChart) return;
-
-  if (tab === 'cal') {
-    tabCal.classList.add('active');
-    tabChart.classList.remove('active');
-    contentCal.style.display = 'block';
-    contentChart.style.display = 'none';
-  } else {
-    tabCal.classList.remove('active');
-    tabChart.classList.add('active');
-    contentCal.style.display = 'none';
-    contentChart.style.display = 'block';
-    // 切换时重新绘制图表以确保尺寸正确
-    renderChart(_nbHistory);
-  }
-};
-
-function refreshNotebook() {
-  renderCalendar(_nbHistory);
-  renderNotebookSessions(_nbHistory, calSelected);
-}

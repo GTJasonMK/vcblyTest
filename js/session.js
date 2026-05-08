@@ -2,7 +2,7 @@
 
 import { allWords, session, getCurrentWord, getCurrentWordIndex, resetSession, restoreSession } from './state.js';
 import { updateSettings } from './state.js';
-import { saveSettings, loadHistory, saveHistory, saveSession, clearSession } from './storage.js';
+import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession } from './storage.js';
 import * as UI from './ui.js';
 import { PANEL } from './constants.js';
 
