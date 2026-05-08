@@ -272,8 +272,8 @@ body::before {
   margin-top: 2px;
 }
 .btn-dont-know {
-  padding: 6px 20px;
-  font-size: 0.78rem;
+  padding: 8px 24px;
+  font-size: 0.8rem;
   font-family: inherit;
   color: var(--text-muted);
   background: transparent;
@@ -281,11 +281,14 @@ body::before {
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--ease);
+  -webkit-tap-highlight-color: transparent;
 }
-.btn-dont-know:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .btn-dont-know:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
 }
 .btn-dont-know:active { transform: scale(0.97); }
 .btn-dont-know:disabled {
