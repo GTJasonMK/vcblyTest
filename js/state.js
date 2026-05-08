@@ -26,7 +26,7 @@ export function createEmptySession() {
     active: false,
     order: [],          // 随机后的单词索引序列
     cursor: 0,          // 当前测试位置
-    todayUnknown: [],   // 本轮选错的单词 [{idx, w, uk, us, d}]
+    todayUnknown: [],   // 本次选错的单词 [{idx, w, uk, us, d}]
     testedCount: 0,     // 已测试数量
     correctCount: 0,    // 正确数量
     maxUnknown: settings.maxUnknown || DEFAULT_MAX_UNKNOWN,

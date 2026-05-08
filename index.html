@@ -13,22 +13,26 @@
 <div class="container">
     <!-- 首页面板 -->
   <div class="panel active" id="panel-home">
-    <div class="home-header">
-      <h1>考研词汇随机测试</h1>
-      <div class="subtitle">红宝书</div>
-    </div>
+    <div class="home-centered">
+      <div class="home-header">
+        <h1>考研词汇随机测试</h1>
+        <div class="subtitle">红宝书</div>
+      </div>
 
     <!-- 统计摘要栏 -->
     <div class="stats-bar" id="statsBar">
       <div class="stat-chip">
+        <span class="sc-today" id="scTodayTests" style="display:none">+0</span>
         <div class="sc-val" id="scTotalTests">0</div>
         <div class="sc-lbl">测试次数</div>
       </div>
       <div class="stat-chip">
+        <span class="sc-today" id="scTodayWords" style="display:none">+0</span>
         <div class="sc-val" id="scTotalWords">0</div>
         <div class="sc-lbl">累计测词</div>
       </div>
       <div class="stat-chip">
+        <span class="sc-today" id="scTodayWrong" style="display:none">+0</span>
         <div class="sc-val" id="scWrongWords">0</div>
         <div class="sc-lbl">收录生词</div>
       </div>
@@ -48,7 +52,7 @@
       <div class="home-card" id="homeTestCard">
         <div class="home-card-icon">📖</div>
         <h3>开始测试</h3>
-        <p class="home-card-desc">随机抽取 · 四选一 · 错词收入今日单词本</p>
+        <p class="home-card-desc">随机抽取 · 四选一 · 错词记录本次结果</p>
         <div class="setting-row">
           <label for="maxUnknown">错词上限</label>
           <input type="number" id="maxUnknown" value="20" min="1" max="200">
@@ -66,11 +70,78 @@
       </div>
     </div>
 
+    <!-- 概率分布图：动态定位至错词本右侧 + 地图右边缘 -->
+    <canvas class="nb-dist-chart" id="probDistChart" width="260" height="180"></canvas>
+
+    <!-- 学习成就面板：动态定位至开始测试左侧 + 地图左边缘，与KDE分布图对称 -->
+    <div class="nb-achieve-panel" id="achievePanel">
+      <div class="achieve-panel-header">🏅 当前称号</div>
+      <div class="title-badge-card">
+        <div class="current-title" id="achCurrentTitle">词海新兵</div>
+        <div class="achievement-score"><span id="achScore">0</span> 成就值</div>
+        <div class="title-next" id="achTitleNext">继续测试解锁下一个称号</div>
+        <div class="title-progress" aria-hidden="true">
+          <span id="achTitleProgress"></span>
+        </div>
+        <div class="achieve-grid title-metric-grid">
+          <div class="achieve-item">
+            <span class="achieve-val" id="achMastered">0</span>
+            <span class="achieve-lbl">累计掌握</span>
+          </div>
+          <div class="achieve-item">
+            <span class="achieve-val" id="achPerfect">0</span>
+            <span class="achieve-lbl">完美掌握</span>
+          </div>
+          <div class="achieve-item">
+            <span class="achieve-val" id="achRevenge">0</span>
+            <span class="achieve-lbl">已复仇</span>
+          </div>
+          <div class="achieve-item">
+            <span class="achieve-val" id="achExplored">0%</span>
+            <span class="achieve-lbl">探索进度</span>
+          </div>
+        </div>
+        <button class="nav-link title-badge-link" onclick="showPanel('badges')">查看徽章馆</button>
+      </div>
+    </div>
+
     <!-- 底部操作 -->
     <div class="nav-links">
       <button class="nav-link" onclick="showPanel('history')">历史记录</button>
       <span class="nav-divider">·</span>
+      <button class="nav-link" onclick="exportAll()">导出数据</button>
+      <span class="nav-divider">·</span>
+      <button class="nav-link" onclick="document.getElementById('importFile').click()">导入数据</button>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+      <span class="nav-divider">·</span>
       <button class="nav-link" onclick="resetAll()">重置数据</button>
+    </div>
+
+    </div><!-- /home-centered -->
+
+    <!-- 词汇概率地图 -->
+    <div class="home-map" id="homeMap">
+      <div class="home-map-header">
+        <span class="home-map-title">📊 词汇概率地图</span>
+        <div class="nb-map-controls">
+          <label class="nb-map-label">概率范围筛选</label>
+          <div class="nb-map-range">
+            <input type="number" id="mapProbMin" value="0" min="0" max="100" step="1" class="nb-map-input">
+            <span class="nb-map-sep">–</span>
+            <input type="number" id="mapProbMax" value="5" min="0" max="100" step="1" class="nb-map-input">
+            <span class="nb-map-unit">‱</span>
+            <button class="btn btn-accent btn-sm" onclick="testMapRange()">测这些词</button>
+          </div>
+        </div>
+        <span class="nb-map-info" id="mapRangeInfo"></span>
+      </div>
+      <div class="nb-map-legend">
+        <span>低概率·已掌握</span>
+        <span class="nb-map-gradient"></span>
+        <span>高概率·待复习</span>
+      </div>
+      <canvas id="nbWordMap" class="nb-word-map-canvas"></canvas>
+      <div class="nb-map-tooltip" id="mapTooltip" style="display:none"></div>
     </div>
   </div>
 
@@ -130,7 +201,7 @@
 
 <!-- 结果面板 -->
   <div class="panel" id="panel-result">
-    <h2 style="margin-bottom:4px">今日测试完成</h2>
+    <h2 style="margin-bottom:4px">此次测试完成</h2>
     <p style="color:var(--text-light);font-size:0.9rem" id="resultDate"></p>
     <div class="result-stats">
       <div class="stat-item">
@@ -143,16 +214,16 @@
       </div>
       <div class="stat-item">
         <div class="stat-num" id="statUnknown">0</div>
-        <div class="stat-label">今日不会的</div>
+        <div class="stat-label">本次不会的</div>
       </div>
     </div>
 
-    <h3 style="margin:20px 0 8px;text-align:left">今日错词本</h3>
+    <h3 style="margin:20px 0 8px;text-align:left">本次错词</h3>
     <div class="word-list" id="todayWordList"></div>
 
     <div style="margin-top:20px">
-      <button class="btn btn-secondary btn-sm" onclick="startReview()">复习今日错词</button>
-      <button class="btn btn-primary btn-sm" onclick="startSession()" style="margin-left:10px">开始新一轮</button>
+      <button class="btn btn-secondary btn-sm" onclick="startReview()">复习本次错词</button>
+      <button class="btn btn-primary btn-sm" onclick="startSession()" style="margin-left:10px">再测一次</button>
     </div>
 
     <div class="nav-links" style="margin-top:18px">
@@ -163,7 +234,7 @@
 
   <!-- 复习面板 -->
   <div class="panel" id="panel-review">
-    <h3 style="margin-bottom:16px">复习今日错词</h3>
+    <h3 style="margin-bottom:16px">复习本次错词</h3>
     <div class="review-card">
       <div class="word-line">
         <div class="word-display" id="reviewWord"></div>
@@ -186,7 +257,7 @@
       <span class="review-index" id="reviewIndex">1 / 1</span>
       <button class="nav-btn" onclick="reviewNext()">▶</button>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="showPanel('result')">返回错词本</button>
+    <button class="btn btn-secondary btn-sm" onclick="showPanel('result')">返回本次结果</button>
   </div>
 
       <!-- 错词本面板 -->
@@ -195,11 +266,6 @@
     <div class="nb-topbar">
       <button class="nav-link" onclick="showPanel('home')">← 返回</button>
       <h3 style="margin:0">错词本</h3>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-secondary btn-sm" onclick="exportNotebook()">导出</button>
-        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">导入</button>
-        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importNotebook(event)">
-      </div>
     </div>
 
 	    <!-- 卡片1：日历 / 成长趋势（Tab切换） -->
@@ -239,6 +305,52 @@
 		        </div>
 		      </div>
 		    </div>
+  </div>
+
+  <!-- 徽章馆面板 -->
+  <div class="panel" id="panel-badges">
+    <div class="badge-topbar">
+      <button class="nav-link" onclick="showPanel('home')">← 返回</button>
+      <h3 style="margin:0">徽章馆</h3>
+    </div>
+
+    <div class="badge-hero">
+      <div>
+        <div class="badge-hero-label">当前称号</div>
+        <div class="badge-hero-title" id="badgePageTitle">词海新兵</div>
+      </div>
+      <div class="badge-hero-score">
+        <span id="badgePageScore">0</span>
+        <small>成就值</small>
+      </div>
+    </div>
+
+    <div class="badge-title-progress">
+      <div class="badge-title-row">
+        <span id="badgeTitleCurrent">词海新兵</span>
+        <span id="badgeTitleNext">下一称号</span>
+      </div>
+      <div class="title-progress" aria-hidden="true">
+        <span id="badgeTitleProgress"></span>
+      </div>
+    </div>
+
+    <div class="badge-summary-grid">
+      <div class="badge-summary-item">
+        <span id="badgeCollectedCount">0/0</span>
+        <small>已收集徽章</small>
+      </div>
+      <div class="badge-summary-item">
+        <span id="badgeTierCount">0</span>
+        <small>已解锁等级</small>
+      </div>
+      <div class="badge-summary-item">
+        <span id="badgeNextGain">暂无</span>
+        <small>最近可进阶</small>
+      </div>
+    </div>
+
+    <div class="badge-grid" id="badgeGrid"></div>
   </div>
 
 <!-- 历史面板 -->

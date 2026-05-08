@@ -2,20 +2,21 @@
 
 const player = new Audio();
 let activeButton = null;
+let activePath = '';
 
 function setButtonPlaying(button, isPlaying) {
   if (!button) return;
   button.classList.toggle('playing', isPlaying);
 }
 
-player.addEventListener('ended', () => {
+function clearActiveButton() {
   setButtonPlaying(activeButton, false);
   activeButton = null;
-});
+  activePath = '';
+}
 
-player.addEventListener('pause', () => {
-  setButtonPlaying(activeButton, false);
-});
+player.addEventListener('ended', clearActiveButton);
+player.addEventListener('error', clearActiveButton);
 
 export function getAudioPath(word, zeroBasedIndex) {
   const byIndex = window.AUDIO_MANIFEST_BY_WORD_INDEX || {};
@@ -56,17 +57,23 @@ export function playWordAudio(word, zeroBasedIndex, button = null) {
     setButtonPlaying(activeButton, false);
   }
 
-  activeButton = button;
-  setButtonPlaying(activeButton, true);
   player.pause();
-  player.currentTime = 0;
   player.src = path;
+  try {
+    player.currentTime = 0;
+  } catch {
+    // New source metadata may not be ready yet; assigning src already starts at 0.
+  }
+  activeButton = button;
+  activePath = path;
+  setButtonPlaying(activeButton, true);
 
   const playResult = player.play();
   if (playResult && typeof playResult.catch === 'function') {
     playResult.catch(() => {
-      setButtonPlaying(activeButton, false);
-      activeButton = null;
+      if (activePath === path) {
+        clearActiveButton();
+      }
     });
   }
 
@@ -74,6 +81,7 @@ export function playWordAudio(word, zeroBasedIndex, button = null) {
 }
 
 export function playWordAudioFromButton(button) {
+  if (!button) return false;
   const word = { w: button.dataset.audioWord || '' };
   const rawIndex = button.dataset.audioIndex;
   const index = rawIndex === undefined ? undefined : Number(rawIndex);

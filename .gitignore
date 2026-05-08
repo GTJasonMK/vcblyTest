@@ -24,13 +24,25 @@ __pycache__/
 *.mp4
 *.m4a
 *.xlsx
+!media/
+!media/source/
+!media/source/2023考研英语词汇红宝书.xlsx
 words.json
 word_audio/
 
-# 临时脚本 & 工作目录
-build_audio_review_dataset.py
-repair_audio_copy.py
-run_split.py
-split_audio.py
-split_audio_from_video.py
+# 音频复核数据集：上传播放所需音频和元数据，忽略占空间的截图
+!audio_review_dataset/**/audio.m4a
+audio_review_dataset/*/screenshot.png
+audio_review_dataset/*/word_crop.png
+
+# 本地工具输出 & 工作目录
+/build_audio_review_dataset.py
+/fix_review_dataset_titles.py
+/repair_audio_copy.py
+/run_split.py
+/split_audio.py
+/split_audio_from_video.py
 .audio_review_work/
+.audio_work/
+artifacts/
+word_audio_matched*/

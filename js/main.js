@@ -1,7 +1,7 @@
 // ========== 应用入口 ==========
 
 import { initWords, session } from './state.js';
-import { loadSettings, loadHistory, saveHistory, clearHistory, clearAll, loadTheme, saveTheme, loadSession, exportNotebook, importNotebook } from './storage.js';
+import { loadSettings, loadHistory, saveHistory, clearHistory, clearAll, loadTheme, saveTheme, loadSession, exportAll, importAll } from './storage.js';
 import { setMaxUnknownInput } from './ui.js';
 import * as UI from './ui.js';
 import * as Session from './session.js';
@@ -60,8 +60,23 @@ function init() {
 
   UI.renderOverallStats(loadHistory());
   UI.renderResumeButton(loadSession());
+  UI.renderWordMap();
+
+  // 窗口大小变化时重新渲染概率地图和分布图
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (document.getElementById('panel-home').classList.contains('active')) {
+        UI.renderWordMap();
+      }
+    }, 150);
+  });
 
   document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+  // 导入文件监听（避免 inline onchange 的模块加载时序问题）
+  document.getElementById('importFile').addEventListener('change', (e) => window.importAll(e));
 }
 
 // ===== 全局事件绑定（挂载到 window 供 HTML onclick 调用） =====
@@ -90,10 +105,14 @@ window.showPanel = (name) => {
   if (name === 'notebook') {
     UI.renderNotebook(loadHistory());
   }
+  if (name === 'badges') {
+    UI.renderBadgePage(loadHistory());
+  }
   if (name === 'home') {
     UI.renderOverallStats(loadHistory());
     UI.renderResumeButton(loadSession());
     UI.renderHomeNotebookSummary(loadHistory());
+    UI.renderWordMap();
   }
   if (name === 'result') {
     UI.renderResult();
@@ -113,33 +132,51 @@ window.clearHistory = () => {
   UI.toast('历史记录已清空');
 };
 
-window.exportNotebook = () => {
-  const result = exportNotebook();
+window.exportAll = () => {
+  const result = exportAll();
   if (result === null) {
-    UI.toast('没有可导出的错词数据');
+    UI.toast('没有可导出的数据');
   }
 };
 
-window.importNotebook = (event) => {
+window.importAll = (event) => {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const count = importNotebook(e.target.result);
+      const count = importAll(e.target.result);
       UI.toast(`导入成功，共 ${count} 条测试记录`);
-      // 如果当前在错词本页面，刷新显示
+      // 刷新首页数据和错词本
+      UI.renderOverallStats(loadHistory());
+      UI.renderResumeButton(loadSession());
+      UI.renderWordMap();
       if (document.getElementById('panel-notebook').classList.contains('active')) {
         UI.renderNotebook(loadHistory());
       }
+      if (document.getElementById('panel-badges').classList.contains('active')) {
+        UI.renderBadgePage(loadHistory());
+      }
+      // 更新设置输入
+      const settings = loadSettings();
+      const maxUnknownEl = document.getElementById('maxUnknown');
+      if (maxUnknownEl) maxUnknownEl.value = settings.maxUnknown;
     } catch (err) {
       UI.toast(err.message);
     }
   };
   reader.readAsText(file);
-  // 重置 input 以便重复选择同一文件
   event.target.value = '';
 };
+
+function showHashPanel() {
+  const params = new URLSearchParams(location.search);
+  const hrefPanel = location.href.match(/[?&#]panel=([^&#]+)/)?.[1];
+  const name = decodeURIComponent((params.get('panel') || hrefPanel || location.hash.replace('#', '')).trim());
+  if (['home', 'history', 'notebook', 'badges'].includes(name)) {
+    window.showPanel(name);
+  }
+}
 
 // ===== 键盘快捷键 =====
 document.addEventListener('keydown', e => {
@@ -172,4 +209,9 @@ document.addEventListener('keydown', e => {
 });
 
 // ===== 启动 =====
-init();
+window.addEventListener('hashchange', showHashPanel);
+try {
+  init();
+} finally {
+  showHashPanel();
+}

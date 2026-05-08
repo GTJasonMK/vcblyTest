@@ -8,6 +8,7 @@ export const PANEL = {
   REVIEW: 'panel-review',
   HISTORY: 'panel-history',
   NOTEBOOK: 'panel-notebook',
+  BADGES: 'panel-badges',
 };
 
 // localStorage key
@@ -16,6 +17,7 @@ export const STORAGE_KEY = {
   SETTINGS: 'vocab_settings',
   THEME: 'vocab_theme',
   SESSION: 'vocab_session',   // 未完成的测试状态
+  WORD_STATS: 'vocab_word_stats', // 每词答题统计
 };
 
 // 默认设置

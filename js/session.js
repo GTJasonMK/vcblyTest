@@ -2,9 +2,37 @@
 
 import { allWords, session, getCurrentWord, getCurrentWordIndex, resetSession, restoreSession } from './state.js';
 import { updateSettings } from './state.js';
-import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession } from './storage.js';
+import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession, loadWordStats, recordWordResult } from './storage.js';
 import * as UI from './ui.js';
 import { playWordAudio } from './audio.js';
+
+/** 计算每词基础权重（基于历史统计） */
+function computeBaseWeight(stats, idx) {
+  const s = stats[idx];
+  if (!s || s.tested === 0) return 5.0;
+  const wrongRate = s.wrong / s.tested;
+  return 1.5 + wrongRate * 2.5;
+}
+
+/** 获取所有单词的归一化概率（和为1），供可视化使用 */
+export function getWordProbabilities() {
+  const stats = loadWordStats();
+  const weights = allWords.map((_, i) => computeBaseWeight(stats, i));
+  const total = weights.reduce((a, b) => a + b, 0);
+  return weights.map(w => w / total);
+}
+
+/** 加权无放回抽样：key = random^(1/weight)，排序后即为抽样序列 */
+function buildWeightedOrder() {
+  const stats = loadWordStats();
+  const items = allWords.map((_, i) => {
+    const weight = computeBaseWeight(stats, i);
+    const key = Math.pow(Math.random(), 1.0 / weight);
+    return { idx: i, key };
+  });
+  items.sort((a, b) => b.key - a.key);
+  return items.map(it => it.idx);
+}
 
 /** Fisher-Yates洗牌 */
 function shuffle(arr) {
@@ -14,11 +42,6 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
-}
-
-/** 生成随机索引序列 */
-function shuffleIndices(length) {
-  return shuffle(Array.from({ length }, (_, i) => i));
 }
 
 /** 为当前单词生成4个选项（1个正确释义+3个随机错误释义），返回选项数组 */
@@ -50,7 +73,7 @@ function autoSave() {
   saveSession(session);
 }
 
-/** 开始新一轮测试 */
+/** 开始本次测试 */
 export function startSession() {
   if (!allWords.length) {
     UI.toast('词库未加载，请刷新页面');
@@ -65,9 +88,38 @@ export function startSession() {
   resetSession();
 
   session.active = true;
-  session.order = shuffleIndices(allWords.length);
+  session.order = buildWeightedOrder();
   session.cursor = 0;
   session.maxUnknown = maxUnknown;
+
+  UI.showPanel('test');
+  showCurrentWord();
+  autoSave();
+}
+
+/** 对指定词表开始测试（词汇地图范围筛选） */
+export function startFilteredSession(indices) {
+  if (!allWords.length) {
+    UI.toast('词库未加载，请刷新页面');
+    return;
+  }
+  if (!indices || indices.length === 0) {
+    UI.toast('范围内没有单词');
+    return;
+  }
+
+  clearSession();
+
+  const maxUnknown = UI.getMaxUnknownInput();
+  saveSettings({ maxUnknown });
+  updateSettings(maxUnknown);
+  resetSession();
+
+  session.active = true;
+  // 对指定索引做随机洗牌
+  session.order = shuffle(indices);
+  session.cursor = 0;
+  session.maxUnknown = Math.min(maxUnknown, indices.length);
 
   UI.showPanel('test');
   showCurrentWord();
@@ -92,7 +144,7 @@ export function resumeSession() {
     document.getElementById('defText').textContent = word.d;
     document.getElementById('defText').classList.add('show');
     document.getElementById('nextBtn').style.display = 'flex';
-    // 禁用选项（因为是上一轮的结果）
+    // 禁用选项（因为是上次保存的结果）
     document.getElementById('optionsGrid').innerHTML = '';
   } else {
     // 正常恢复：重新生成选项
@@ -151,13 +203,15 @@ export function markUnknown() {
     });
   }
 
+  // 记录词级统计
+  recordWordResult(wordIdx, false);
+
   // 高亮正确选项，帮助学习
   UI.showAnswerFeedback(-1, session.correctIdx);
 
   UI.updateProgress();
   session.awaitingNext = true;
   autoSave();
-  document.getElementById('defText').classList.add('show');
   document.getElementById('nextBtn').style.display = 'flex';
 
   if (session.todayUnknown.length >= session.maxUnknown) {
@@ -171,7 +225,11 @@ export function selectAnswer(optIdx) {
   session.answered = true;
   session.testedCount++;
 
+  const wordIdx = getCurrentWordIndex();
   const isCorrect = session.options[optIdx].isCorrect;
+
+  // 记录词级统计
+  recordWordResult(wordIdx, isCorrect);
 
   UI.showAnswerFeedback(optIdx, session.correctIdx);
 
@@ -180,11 +238,10 @@ export function selectAnswer(optIdx) {
     session.cursor++;
     UI.updateProgress();
     autoSave();
-    // 显示释义，短暂高亮后自动下一题
-    UI.flashCorrectAndAdvance(() => advanceOrReshuffle());
+    // 选项已高亮正确答案，短暂停留后自动下一题
+    setTimeout(() => advanceOrReshuffle(), 400);
   } else {
     // 选错：加入单词本
-    const wordIdx = getCurrentWordIndex();
     const word = allWords[wordIdx];
 
     if (!session.todayUnknown.find(w => w.idx === wordIdx)) {
@@ -200,8 +257,6 @@ export function selectAnswer(optIdx) {
     UI.updateProgress();
     session.awaitingNext = true;
     autoSave();
-    // 显示释义和"下一个"按钮
-    document.getElementById('defText').classList.add('show');
     document.getElementById('nextBtn').style.display = 'flex';
 
     if (session.todayUnknown.length >= session.maxUnknown) {
@@ -223,10 +278,10 @@ export function nextWord() {
   }
 }
 
-/** 推进游标，如果一轮耗尽则结束测试（保证同一次测试不出现重复单词） */
+/** 推进游标，如果本次抽样序列耗尽则结束测试（保证同一次测试不出现重复单词） */
 function advanceOrReshuffle() {
   if (session.cursor >= session.order.length) {
-    // 全部单词已测完一轮，结束本次测试
+    // 全部单词已测完，结束本次测试
     endSession();
     return;
   }
@@ -235,7 +290,7 @@ function advanceOrReshuffle() {
   }
 }
 
-/** 结束本轮测试 */
+/** 结束本次测试 */
 export function endSession() {
   if (!session.active) return;
   session.active = false;
@@ -257,7 +312,7 @@ export function endSession() {
 /** 提前结束 */
 export function endSessionEarly() {
   if (!session.active) return;
-  if (!confirm('确定要提前结束本轮测试吗？当前不会单词将记入单词本。')) return;
+  if (!confirm('确定要提前结束本次测试吗？当前不会单词将记入本次结果。')) return;
 
   session.active = false;
   clearSession(); // 测试结束，清除进度

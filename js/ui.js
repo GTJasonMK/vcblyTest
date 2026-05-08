@@ -2,7 +2,8 @@
 
 import { PANEL, TOAST_DURATION } from './constants.js';
 import { allWords, session } from './state.js';
-import { getAudioPath, updateAudioButton } from './audio.js';
+import { getAudioPath, playWordAudio, updateAudioButton } from './audio.js';
+import { loadWordStats } from './storage.js';
 
 const AUDIO_ICON = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -123,16 +124,6 @@ export function showAnswerFeedback(selectedIdx, correctIdx) {
   });
 }
 
-/** 选中正确：短暂高亮后自动下一题 */
-export function flashCorrectAndAdvance(callback) {
-  const defEl = document.getElementById('defText');
-  defEl.classList.add('show');
-  setTimeout(() => {
-    defEl.classList.remove('show');
-    callback();
-  }, 800);
-}
-
 /** 更新进度条 */
 export function updateProgress() {
   const pct = Math.min((session.todayUnknown.length / session.maxUnknown) * 100, 100);
@@ -170,21 +161,480 @@ export function renderResult() {
 
 // ===== 首页统计 =====
 export function renderOverallStats(historyList) {
+  historyList = Array.isArray(historyList) ? historyList : [];
+  const today = new Date().toLocaleDateString('zh-CN');
+
   if (historyList.length === 0) {
     document.getElementById('scTotalTests').textContent = '0';
     document.getElementById('scTotalWords').textContent = '0';
     document.getElementById('scWrongWords').textContent = '0';
+    document.getElementById('scTodayTests').style.display = 'none';
+    document.getElementById('scTodayWords').style.display = 'none';
+    document.getElementById('scTodayWrong').style.display = 'none';
+    renderAchievements(historyList);
     return;
   }
+
   const uniqueWords = new Set();
   let totalTested = 0;
+  // 今日统计
+  let todayTests = 0, todayTested = 0;
+  const todayWords = new Set();
+
   historyList.forEach(h => {
     totalTested += (h.testedCount || 0);
-    h.words.forEach(w => uniqueWords.add(w.w));
+    (h.words || []).forEach(w => uniqueWords.add(w.w));
+
+    const hDate = new Date(h.date).toLocaleDateString('zh-CN');
+    if (hDate === today) {
+      todayTests++;
+      todayTested += (h.testedCount || 0);
+      (h.words || []).forEach(w => todayWords.add(w.w));
+    }
   });
+
   document.getElementById('scTotalTests').textContent = historyList.length;
   document.getElementById('scTotalWords').textContent = totalTested;
   document.getElementById('scWrongWords').textContent = uniqueWords.size;
+
+  // 今日增量标签
+  updateTodayBadge('scTodayTests', todayTests);
+  updateTodayBadge('scTodayWords', todayTested);
+  updateTodayBadge('scTodayWrong', todayWords.size);
+
+  renderAchievements(historyList);
+}
+
+function updateTodayBadge(id, count) {
+  const el = document.getElementById(id);
+  if (count > 0) {
+    el.textContent = '+' + count;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function getHistoryAchievementMetrics(historyList) {
+  const wrongWords = new Set();
+  let totalTested = 0;
+  let perfectSessions = 0;
+  let bestAccuracy = 0;
+
+  historyList.forEach(h => {
+    const tested = h.testedCount || 0;
+    const wrong = (h.words || []).length;
+    const correct = Number.isFinite(h.correctCount) ? h.correctCount : Math.max(0, tested - wrong);
+    totalTested += tested;
+    (h.words || []).forEach(w => wrongWords.add(w.w));
+
+    if (tested > 0) {
+      const accuracy = correct / tested;
+      bestAccuracy = Math.max(bestAccuracy, accuracy);
+      if (wrong === 0) perfectSessions++;
+    }
+  });
+
+  return {
+    totalTests: historyList.length,
+    totalTested,
+    wrongWords: wrongWords.size,
+    perfectSessions,
+    bestAccuracy,
+  };
+}
+
+function getWordAchievementMetrics(historyList = []) {
+  // 直接从 localStorage 读取词级统计
+  let stats;
+  try {
+    const raw = localStorage.getItem('vocab_word_stats');
+    stats = raw ? JSON.parse(raw) : {};
+  } catch { stats = {}; }
+  const total = allWords.length;
+  let mastered = 0, perfect = 0, revenge = 0;
+
+  // 用 Object.values 遍历所有已记录的词级统计
+  const entries = Object.values(stats).filter(s => s && s.tested > 0);
+  let explored = entries.length;
+
+  for (const s of entries) {
+    if (s.tested >= 3) {
+      const rate = s.wrong / s.tested;
+      if (rate <= 0.2) mastered++;
+      if (s.wrong === 0) perfect++;
+      if (s.wrong > 0 && rate <= 0.5) revenge++;
+    }
+  }
+
+  // 回退：wordStats 为空时，从 history 估算 explored（至少测过的错词数）
+  if (explored === 0 && historyList.length > 0) {
+    const histWords = new Set();
+    historyList.forEach(h => (h.words || []).forEach(w => histWords.add(w.w || w.idx)));
+    explored = histWords.size;
+  }
+
+  return {
+    total,
+    explored,
+    exploredPct: total > 0 ? explored / total * 100 : 0,
+    mastered,
+    perfect,
+    revenge,
+  };
+}
+
+const TITLE_LEVELS = [
+  { name: '词海新兵', points: 0 },
+  { name: '记忆学徒', points: 50 },
+  { name: '词汇行者', points: 150 },
+  { name: '生词猎手', points: 320 },
+  { name: '词库专家', points: 600 },
+  { name: '红宝书征服者', points: 950 },
+  { name: '词汇宗师', points: 1400 },
+];
+
+const BADGE_DEFINITIONS = [
+  {
+    id: 'practice',
+    mark: '练',
+    name: '练习之路',
+    desc: '完成测试次数',
+    unit: '次',
+    value: metrics => metrics.history.totalTests,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 1, points: 10 },
+      { name: '白银', className: 'silver', target: 10, points: 25 },
+      { name: '黄金', className: 'gold', target: 30, points: 50 },
+      { name: '钻石', className: 'diamond', target: 60, points: 90 },
+    ],
+  },
+  {
+    id: 'volume',
+    mark: '量',
+    name: '词量积累',
+    desc: '累计完成测词',
+    unit: '词',
+    value: metrics => metrics.history.totalTested,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 100, points: 10 },
+      { name: '白银', className: 'silver', target: 500, points: 30 },
+      { name: '黄金', className: 'gold', target: 1500, points: 70 },
+      { name: '钻石', className: 'diamond', target: 3000, points: 120 },
+    ],
+  },
+  {
+    id: 'explore',
+    mark: '探',
+    name: '词库探索',
+    desc: '至少测试过的不同单词',
+    unit: '词',
+    value: metrics => metrics.words.explored,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 100, points: 10 },
+      { name: '白银', className: 'silver', target: 500, points: 35 },
+      { name: '黄金', className: 'gold', target: 1500, points: 80 },
+      { name: '钻石', className: 'diamond', target: metrics => Math.max(metrics.words.total, 1), points: 150 },
+    ],
+  },
+  {
+    id: 'master',
+    mark: '熟',
+    name: '稳定掌握',
+    desc: '测试至少 3 次且错误率不超过 20%',
+    unit: '词',
+    value: metrics => metrics.words.mastered,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 50, points: 15 },
+      { name: '白银', className: 'silver', target: 200, points: 45 },
+      { name: '黄金', className: 'gold', target: 500, points: 90 },
+      { name: '钻石', className: 'diamond', target: 1000, points: 160 },
+    ],
+  },
+  {
+    id: 'perfect',
+    mark: '准',
+    name: '完美记忆',
+    desc: '测试至少 3 次且从未答错',
+    unit: '词',
+    value: metrics => metrics.words.perfect,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 20, points: 15 },
+      { name: '白银', className: 'silver', target: 80, points: 45 },
+      { name: '黄金', className: 'gold', target: 200, points: 90 },
+      { name: '钻石', className: 'diamond', target: 500, points: 160 },
+    ],
+  },
+  {
+    id: 'revenge',
+    mark: '复',
+    name: '错词复仇',
+    desc: '曾经答错但错误率已压到 50% 以下',
+    unit: '词',
+    value: metrics => metrics.words.revenge,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 20, points: 15 },
+      { name: '白银', className: 'silver', target: 80, points: 45 },
+      { name: '黄金', className: 'gold', target: 200, points: 90 },
+      { name: '钻石', className: 'diamond', target: 500, points: 160 },
+    ],
+  },
+  {
+    id: 'accuracy',
+    mark: '高',
+    name: '高分场次',
+    desc: '单次测试最高正确率',
+    unit: '%',
+    value: metrics => metrics.history.bestAccuracy * 100,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 70, points: 10 },
+      { name: '白银', className: 'silver', target: 80, points: 25 },
+      { name: '黄金', className: 'gold', target: 90, points: 50 },
+      { name: '钻石', className: 'diamond', target: 100, points: 100 },
+    ],
+  },
+  {
+    id: 'clean',
+    mark: '全',
+    name: '全对场次',
+    desc: '没有错词的测试次数',
+    unit: '次',
+    value: metrics => metrics.history.perfectSessions,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 1, points: 10 },
+      { name: '白银', className: 'silver', target: 5, points: 25 },
+      { name: '黄金', className: 'gold', target: 15, points: 50 },
+      { name: '钻石', className: 'diamond', target: 30, points: 100 },
+    ],
+  },
+  {
+    id: 'archive',
+    mark: '档',
+    name: '生词档案',
+    desc: '收录过的不同生词',
+    unit: '词',
+    value: metrics => metrics.history.wrongWords,
+    tiers: [
+      { name: '青铜', className: 'bronze', target: 30, points: 10 },
+      { name: '白银', className: 'silver', target: 100, points: 25 },
+      { name: '黄金', className: 'gold', target: 300, points: 50 },
+      { name: '钻石', className: 'diamond', target: 600, points: 90 },
+    ],
+  },
+];
+
+function clamp01(value) {
+  return Math.max(0, Math.min(value, 1));
+}
+
+function resolveTarget(target, metrics) {
+  return Math.max(1, typeof target === 'function' ? target(metrics) : target);
+}
+
+function formatMetric(value, unit) {
+  const normalized = unit === '%' ? Math.round(value) : Math.floor(value);
+  return `${normalized}${unit}`;
+}
+
+function getAchievementMetrics(historyList) {
+  return {
+    history: getHistoryAchievementMetrics(historyList),
+    words: getWordAchievementMetrics(historyList),
+  };
+}
+
+function evaluateBadges(metrics) {
+  return BADGE_DEFINITIONS.map(def => {
+    const value = Math.max(0, def.value(metrics) || 0);
+    const tiers = def.tiers.map(tier => ({
+      ...tier,
+      target: resolveTarget(tier.target, metrics),
+      unlocked: value >= resolveTarget(tier.target, metrics),
+    }));
+    const unlockedTiers = tiers.filter(tier => tier.unlocked);
+    const currentTier = unlockedTiers.length > 0 ? unlockedTiers[unlockedTiers.length - 1] : null;
+    const nextTier = tiers.find(tier => !tier.unlocked) || null;
+    const points = unlockedTiers.reduce((sum, tier) => sum + tier.points, 0);
+    const progressTarget = nextTier ? nextTier.target : tiers[tiers.length - 1].target;
+
+    return {
+      ...def,
+      value,
+      tiers,
+      unlockedTiers,
+      currentTier,
+      nextTier,
+      points,
+      progress: nextTier ? clamp01(value / progressTarget) : 1,
+      valueText: formatMetric(value, def.unit),
+    };
+  });
+}
+
+function getTitleState(points) {
+  let current = TITLE_LEVELS[0];
+  for (const level of TITLE_LEVELS) {
+    if (points >= level.points) current = level;
+  }
+  const next = TITLE_LEVELS.find(level => level.points > points) || null;
+  const progress = next
+    ? clamp01((points - current.points) / (next.points - current.points))
+    : 1;
+
+  return {
+    current,
+    next,
+    progress,
+    remaining: next ? next.points - points : 0,
+  };
+}
+
+function getBadgeSystem(historyList = []) {
+  const metrics = getAchievementMetrics(Array.isArray(historyList) ? historyList : []);
+  const badges = evaluateBadges(metrics);
+  const totalPoints = badges.reduce((sum, badge) => sum + badge.points, 0);
+  const unlockedBadgeCount = badges.filter(badge => badge.currentTier).length;
+  const unlockedTierCount = badges.reduce((sum, badge) => sum + badge.unlockedTiers.length, 0);
+  const nextBadge = badges
+    .filter(badge => badge.nextTier)
+    .sort((a, b) => b.progress - a.progress)[0] || null;
+
+  return {
+    metrics,
+    badges,
+    totalPoints,
+    title: getTitleState(totalPoints),
+    unlockedBadgeCount,
+    unlockedTierCount,
+    nextBadge,
+  };
+}
+
+function updateText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function updateProgressWidth(id, progress) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = `${Math.round(clamp01(progress) * 100)}%`;
+}
+
+function renderAchievementTitleSummary(system) {
+  updateText('achCurrentTitle', system.title.current.name);
+  updateText('achScore', system.totalPoints);
+  updateText('achTitleNext', system.title.next
+    ? `距「${system.title.next.name}」还差 ${system.title.remaining} 成就值`
+    : '最高称号已解锁');
+  updateProgressWidth('achTitleProgress', system.title.progress);
+  updateText('achMastered', system.metrics.words.mastered);
+  updateText('achPerfect', system.metrics.words.perfect);
+  updateText('achRevenge', system.metrics.words.revenge);
+  updateText('achExplored', system.metrics.words.total > 0
+    ? `${Math.round(system.metrics.words.exploredPct)}%`
+    : '0%');
+}
+
+function renderTierChips(badge) {
+  return badge.tiers.map(tier => {
+    const state = tier.unlocked ? 'unlocked' : 'locked';
+    const current = badge.currentTier && badge.currentTier.name === tier.name ? 'current' : '';
+    return `<span class="tier-chip ${tier.className} ${state} ${current}">
+      ${escapeAttr(tier.name)}<small>+${tier.points}</small>
+    </span>`;
+  }).join('');
+}
+
+function renderBadgeCard(badge) {
+  const collected = Boolean(badge.currentTier);
+  const nextText = badge.nextTier
+    ? `下一等级：${badge.nextTier.name} · ${badge.valueText} / ${formatMetric(badge.nextTier.target, badge.unit)}`
+    : '全部等级已完成';
+
+  return `
+    <div class="badge-card ${collected ? 'collected' : 'locked'}">
+      <div class="badge-card-head">
+        <div class="badge-mark">${escapeAttr(badge.mark)}</div>
+        <div class="badge-main">
+          <div class="badge-name">${escapeAttr(badge.name)}</div>
+          <div class="badge-desc">${escapeAttr(badge.desc)}</div>
+        </div>
+        <div class="badge-points">+${badge.points}</div>
+      </div>
+      <div class="badge-current">
+        <span>${collected ? `当前：${badge.currentTier.name}` : '当前：未获得'}</span>
+        <span>${escapeAttr(badge.valueText)}</span>
+      </div>
+      <div class="badge-tier-row">${renderTierChips(badge)}</div>
+      <div class="badge-progress-row">
+        <span>${escapeAttr(nextText)}</span>
+      </div>
+      <div class="badge-progress" aria-hidden="true">
+        <span style="width:${Math.round(badge.progress * 100)}%"></span>
+      </div>
+    </div>
+  `;
+}
+
+export function renderBadgePage(historyList = []) {
+  const system = getBadgeSystem(historyList);
+  const nextGain = system.nextBadge
+    ? `${system.nextBadge.name}·${system.nextBadge.nextTier.name}`
+    : '全部完成';
+
+  updateText('badgePageTitle', system.title.current.name);
+  updateText('badgePageScore', system.totalPoints);
+  updateText('badgeTitleCurrent', system.title.current.name);
+  updateText('badgeTitleNext', system.title.next
+    ? `${system.title.next.name} 还差 ${system.title.remaining}`
+    : '最高称号');
+  updateProgressWidth('badgeTitleProgress', system.title.progress);
+  updateText('badgeCollectedCount', `${system.unlockedBadgeCount}/${system.badges.length}`);
+  updateText('badgeTierCount', system.unlockedTierCount);
+  updateText('badgeNextGain', nextGain);
+
+  const grid = document.getElementById('badgeGrid');
+  if (grid) grid.innerHTML = system.badges.map(renderBadgeCard).join('');
+}
+
+/** 渲染首页称号卡片（徽章细节在徽章馆中展示） */
+function renderAchievements(historyList = []) {
+  const system = getBadgeSystem(historyList);
+  renderAchievementTitleSummary(system);
+  positionAchievePanel();
+}
+
+/** 定位成就面板：左边缘对齐地图左边缘，上边缘对齐统计摘要栏，下边缘与开始测试卡片齐平 */
+function positionAchievePanel() {
+  const panel = document.getElementById('achievePanel');
+  if (!panel) return;
+
+  if (window.matchMedia('(max-width: 600px)').matches) {
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.width = '';
+    panel.style.height = '';
+    return;
+  }
+
+  const testCard = document.getElementById('homeTestCard');
+  const map = document.getElementById('homeMap');
+  const container = document.getElementById('panel-home');
+  if (!testCard || !map || !container) return;
+
+  // 确保在浏览器完成布局后读取坐标
+  requestAnimationFrame(() => {
+    const tr = testCard.getBoundingClientRect();
+    const mr = map.getBoundingClientRect();
+    const pr = container.getBoundingClientRect();
+    const gap = 12;
+    const left = mr.left - pr.left;
+    const width = tr.left - mr.left - gap;
+    panel.style.left = left + 'px';
+    panel.style.top = (tr.top - pr.top) + 'px';
+    panel.style.width = width + 'px';
+    panel.style.height = tr.height + 'px';
+  });
 }
 
 // ===== 历史面板渲染 =====
@@ -639,23 +1089,21 @@ function renderBarChart(historyList) {
 
 // ===== Tab 切换 =====
 window.switchNbTab = (tab) => {
-  const tabCal = document.getElementById('nbTabCal');
-  const tabChart = document.getElementById('nbTabChart');
-  const contentCal = document.getElementById('nbTabContentCal');
-  const contentChart = document.getElementById('nbTabContentChart');
-  if (!tabCal || !tabChart || !contentCal || !contentChart) return;
+  const tabs = ['nbTabCal', 'nbTabChart'];
+  const contents = ['nbTabContentCal', 'nbTabContentChart'];
+
+  tabs.forEach(id => document.getElementById(id)?.classList.remove('active'));
+  contents.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 
   if (tab === 'cal') {
-    tabCal.classList.add('active');
-    tabChart.classList.remove('active');
-    contentCal.style.display = 'flex';
-    contentChart.style.display = 'none';
-  } else {
-    tabCal.classList.remove('active');
-    tabChart.classList.add('active');
-    contentCal.style.display = 'none';
-    contentChart.style.display = 'flex';
-    // 切换时重新绘制图表以确保尺寸正确
+    document.getElementById('nbTabCal').classList.add('active');
+    document.getElementById('nbTabContentCal').style.display = 'flex';
+  } else if (tab === 'chart') {
+    document.getElementById('nbTabChart').classList.add('active');
+    document.getElementById('nbTabContentChart').style.display = 'flex';
     renderBarChart(_nbHistory);
   }
 };
@@ -680,3 +1128,344 @@ export function renderResumeButton(saved) {
     banner.style.display = 'none';
   }
 }
+
+// ===== 词汇地图 =====
+
+const MAP_CELL = 8;       // 方块尺寸(含间距)
+const MAP_GAP = 1;        // 方块间距
+const MAP_GROUP_GAP = MAP_CELL; // 组间间距等于单词方块宽度
+
+let _mapProbs = null;       // 归一化概率数组
+let _mapLayout = null;      // [{ idx, x, y }] 布局缓存
+let _mapRangeMin = 0;
+let _mapRangeMax = Infinity;
+
+/** 计算归一化概率（softmax + 温度参数拉大分布差距） */
+function computeMapProbs() {
+  const T = 0.5; // 温度越低差异越大（<1 放大差距）
+  const stats = loadWordStats();
+  const scores = allWords.map((_, i) => {
+    const s = stats[i];
+    if (!s || s.tested === 0) return 5.0;
+    return 1.5 + (s.wrong / s.tested) * 2.5;
+  });
+  // softmax: p_i = exp(s_i/T) / sum(exp(s_j/T))
+  const maxScore = Math.max(...scores);
+  const exps = scores.map(s => Math.exp((s - maxScore) / T));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(e => e / sum);
+}
+
+/** 按A-Z分组，蛇形排布，返回 [{idx, x, y, gap}]（gap项为组间分隔占位） */
+function buildMapLayout(probs, canvasWidth) {
+  // 按首字母分组
+  const groups = {};
+  allWords.forEach((w, i) => {
+    const letter = /^[a-zA-Z]/.test(w.w) ? w.w[0].toUpperCase() : '#';
+    if (!groups[letter]) groups[letter] = [];
+    groups[letter].push({ idx: i, prob: probs[i] });
+  });
+
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('').filter(l => groups[l]);
+  const items = [];
+  let x = 2, y = 2;
+  const cell = MAP_CELL;
+
+  for (let li = 0; li < letters.length; li++) {
+    const letter = letters[li];
+    const group = groups[letter];
+    const forward = li % 2 === 0;
+    const sorted = forward ? group : [...group].reverse();
+
+    for (const item of sorted) {
+      if (x + cell > canvasWidth - 2) {
+        x = 2;
+        y += cell;
+      }
+      items.push({ idx: item.idx, x, y });
+      x += cell;
+    }
+
+    // 组间间距：插入一个占位方块作为分隔线
+    if (li < letters.length - 1) {
+      if (x + cell > canvasWidth - 2) {
+        x = 2;
+        y += cell;
+      }
+      items.push({ idx: -1, x, y, gap: true });
+      x += cell;
+    }
+  }
+
+  return items;
+}
+
+/** 概率映射到颜色：低概率=深绿/已掌握，高概率=透明/需复习 */
+function probToColor(prob) {
+  if (!_mapProbs || _mapProbs.length === 0) return 'rgba(33,110,57,0.28)';
+  const minProb = Math.min(..._mapProbs);
+  const maxProb = Math.max(..._mapProbs);
+  if (maxProb <= minProb) return 'rgba(33,110,57,0.28)';
+
+  const t = Math.min(Math.max((prob - minProb) / (maxProb - minProb), 0), 1);
+  // GitHub 绿色系反向映射：概率越低越接近深绿，概率越高越透明。
+  const r = Math.round(33 * (1 - t) + 155 * t);
+  const g = Math.round(110 * (1 - t) + 233 * t);
+  const b = Math.round(57 * (1 - t) + 168 * t);
+  const alpha = 0.95 - t * 0.89;
+  return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+}
+
+/** 渲染词汇地图 Canvas */
+export function renderWordMap() {
+  const canvas = document.getElementById('nbWordMap');
+  if (!canvas) return;
+
+  _mapProbs = computeMapProbs();
+
+  // 先算布局以确定所需高度
+  const containerWidth = canvas.parentElement.clientWidth - 4;
+  _mapLayout = buildMapLayout(_mapProbs, containerWidth);
+  const maxY = _mapLayout.reduce((m, it) => Math.max(m, it.y), 0);
+  const mapHeight = Math.max(maxY + MAP_CELL + 4, 120);
+
+  // 设置canvas尺寸
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = containerWidth * dpr;
+  canvas.height = mapHeight * dpr;
+  canvas.style.width = containerWidth + 'px';
+  canvas.style.height = mapHeight + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 绘制单词方块（含分组占位）
+  const cell = MAP_CELL;
+  for (const item of _mapLayout) {
+    if (item.gap) {
+      // 分组分隔占位：黑色，与绿红渐变完全无关
+      ctx.fillStyle = '#1a1a1a';
+      ctx.globalAlpha = 1;
+      ctx.fillRect(item.x, item.y, cell - MAP_GAP, cell - MAP_GAP);
+      continue;
+    }
+    const prob = _mapProbs[item.idx];
+    const inRange = prob >= _mapRangeMin && prob <= _mapRangeMax;
+    ctx.fillStyle = probToColor(prob);
+    ctx.globalAlpha = inRange ? 1 : 0.15;
+    ctx.fillRect(item.x, item.y, cell - MAP_GAP, cell - MAP_GAP);
+  }
+  ctx.globalAlpha = 1;
+
+  updateMapRangeInfo();
+  renderDistChart();
+  positionAchievePanel();
+}
+
+/** 更新范围筛选信息 */
+function updateMapRangeInfo() {
+  const info = document.getElementById('mapRangeInfo');
+  if (!info || !_mapProbs) return;
+  const inRange = _mapProbs.filter(p => p >= _mapRangeMin && p <= _mapRangeMax).length;
+  const minDisp = (_mapRangeMin * 10000).toFixed(1);
+  const maxDisp = _mapRangeMax === Infinity ? '∞' : (_mapRangeMax * 10000).toFixed(1);
+  info.textContent = `${inRange} 个词在 ${minDisp}‱ – ${maxDisp}‱ 范围内`;
+}
+
+/** 核密度估计 + 渲染概率分布曲线 */
+function renderDistChart() {
+  const canvas = document.getElementById('probDistChart');
+  if (!canvas || !_mapProbs || _mapProbs.length === 0) return;
+
+  // 延迟到浏览器完成布局后读取坐标和渲染
+  requestAnimationFrame(() => {
+    const card = document.getElementById('homeNotebookCard');
+    const map = document.getElementById('homeMap');
+    const panel = document.getElementById('panel-home');
+    let displayW, displayH;
+    if (card && map && panel) {
+      const cr = card.getBoundingClientRect();
+      const mr = map.getBoundingClientRect();
+      const pr = panel.getBoundingClientRect();
+      const gap = 12;
+      const left = cr.right - pr.left + gap;
+      displayW = mr.right - cr.right - gap;
+      displayH = cr.height;
+      canvas.style.left = left + 'px';
+      canvas.style.top = (cr.top - pr.top) + 'px';
+      canvas.style.width = displayW + 'px';
+      canvas.style.height = displayH + 'px';
+    }
+
+    const w = canvas.clientWidth || canvas.width;
+    const h = canvas.clientHeight || canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    // 用保存的显示尺寸恢复，避免 clientWidth（不含边框）覆盖导致右边缘偏移
+    if (displayW) {
+      canvas.style.width = displayW + 'px';
+      canvas.style.height = displayH + 'px';
+    }
+
+    drawDistCurve(canvas, w, h, dpr);
+  });
+}
+
+/** 绘制KDE概率密度曲线 */
+function drawDistCurve(canvas, w, h, dpr) {
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const probs = _mapProbs;
+  const n = probs.length;
+  const padX = 4, padY = 4;
+
+  // 自动带宽（Silverman规则，对偏态数据做下限保护）
+  const mean = probs.reduce((a, b) => a + b, 0) / n;
+  const variance = probs.reduce((s, p) => s + (p - mean) ** 2, 0) / n;
+  const std = Math.sqrt(variance);
+  const hBand = Math.max(0.9 * std * Math.pow(n, -0.2), mean * 0.02);
+
+  // 评估范围：覆盖0到P99
+  const sorted = [...probs].sort((a, b) => a - b);
+  const p99 = sorted[Math.floor(n * 0.99)];
+  const xMin = 0;
+  const xMax = p99 * 1.1 || 1e-6;
+
+  const steps = 100;
+  const points = [];
+  let maxDensity = 0;
+
+  for (let i = 0; i <= steps; i++) {
+    const x = xMin + (xMax - xMin) * (i / steps);
+    let density = 0;
+    for (let j = 0; j < n; j++) {
+      const z = (x - probs[j]) / hBand;
+      density += Math.exp(-0.5 * z * z);
+    }
+    density /= n * hBand * Math.sqrt(2 * Math.PI);
+    points.push({ x, density });
+    if (density > maxDensity) maxDensity = density;
+  }
+
+  if (maxDensity === 0) return;
+
+  // 绘制曲线
+  const toX = (x) => padX + ((x - xMin) / (xMax - xMin)) * (w - padX * 2);
+  const toY = (d) => h - padY - (d / maxDensity) * (h - padY * 2);
+
+  ctx.beginPath();
+  ctx.moveTo(toX(points[0].x), toY(points[0].density));
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(toX(points[i].x), toY(points[i].density));
+  }
+  ctx.strokeStyle = '#40c463';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 填充区域
+  ctx.lineTo(toX(points[points.length - 1].x), h - padY);
+  ctx.lineTo(toX(points[0].x), h - padY);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(64,196,99,0.12)';
+  ctx.fill();
+}
+
+/** Canvas悬停显示单词详情 */
+document.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('nbWordMap');
+  if (!canvas) return;
+  const tooltip = document.getElementById('mapTooltip');
+
+  function getMapHit(e) {
+    if (!_mapLayout || !_mapProbs) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const cell = MAP_CELL;
+    return _mapLayout.find(item =>
+      mx >= item.x && mx < item.x + cell - MAP_GAP &&
+      my >= item.y && my < item.y + cell - MAP_GAP
+    );
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    const hit = getMapHit(e);
+
+    if (hit && allWords[hit.idx]) {
+      const w = allWords[hit.idx];
+      const prob = _mapProbs[hit.idx];
+      const permille = (prob * 10000).toFixed(2);
+      tooltip.innerHTML = `
+        <div class="tip-word">${w.w}</div>
+        <div class="tip-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</div>
+        <div class="tip-def">${w.d}</div>
+        <div class="tip-prob">概率: ${permille}‱</div>
+      `;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top = (e.clientY - 10) + 'px';
+      canvas.style.cursor = 'pointer';
+    } else {
+      tooltip.style.display = 'none';
+      canvas.style.cursor = 'crosshair';
+    }
+  });
+
+  canvas.addEventListener('click', (e) => {
+    const hit = getMapHit(e);
+    if (!hit || !allWords[hit.idx]) return;
+    const word = allWords[hit.idx];
+    if (!playWordAudio(word, hit.idx)) {
+      toast('当前单词暂无音频');
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+});
+
+/** 概率范围筛选 */
+function applyMapRange() {
+  const minEl = document.getElementById('mapProbMin');
+  const maxEl = document.getElementById('mapProbMax');
+  _mapRangeMin = (parseFloat(minEl.value) || 0) / 10000;
+  const maxVal = parseFloat(maxEl.value);
+  _mapRangeMax = maxVal > 0 ? maxVal / 10000 : Infinity;
+  renderWordMap();
+}
+
+// 监听范围输入变化
+document.addEventListener('DOMContentLoaded', () => {
+  const minEl = document.getElementById('mapProbMin');
+  const maxEl = document.getElementById('mapProbMax');
+  if (minEl) minEl.addEventListener('input', applyMapRange);
+  if (maxEl) maxEl.addEventListener('input', applyMapRange);
+});
+
+/** 对概率范围内的词开始测试 */
+window.testMapRange = () => {
+  applyMapRange();
+  if (!_mapProbs) return;
+
+  const indices = [];
+  _mapProbs.forEach((p, i) => {
+    if (p >= _mapRangeMin && p <= _mapRangeMax) indices.push(i);
+  });
+
+  if (indices.length === 0) {
+    toast('范围内没有单词');
+    return;
+  }
+
+  // 推迟导入以避免循环依赖
+  import('./session.js').then(({ startFilteredSession }) => {
+    startFilteredSession(indices);
+  });
+};
