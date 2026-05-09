@@ -8,7 +8,6 @@ export const PANEL = {
   REVIEW: 'panel-review',
   HISTORY: 'panel-history',
   NOTEBOOK: 'panel-notebook',
-  BADGES: 'panel-badges',
 };
 
 // localStorage key

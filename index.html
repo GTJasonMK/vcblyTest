@@ -75,33 +75,35 @@
 
     <!-- 学习成就面板：动态定位至开始测试左侧 + 地图左边缘，与KDE分布图对称 -->
     <div class="nb-achieve-panel" id="achievePanel">
-      <div class="achieve-panel-header">🏅 当前称号</div>
       <div class="title-badge-card">
+        <div class="achieve-panel-header">🏅 当前称号</div>
         <div class="current-title" id="achCurrentTitle">词海新兵</div>
         <div class="achievement-score"><span id="achScore">0</span> 成就值</div>
         <div class="title-next" id="achTitleNext">继续测试解锁下一个称号</div>
         <div class="title-progress" aria-hidden="true">
           <span id="achTitleProgress"></span>
         </div>
-        <div class="achieve-grid title-metric-grid">
-          <div class="achieve-item">
+        <button class="nav-link title-badge-link" onclick="showPanel('badges')">查看徽章馆</button>
+      </div>
+      <div class="metric-badge-card">
+        <div class="achieve-grid metric-grid">
+          <div class="achieve-item" title="累计掌握" aria-label="累计掌握">
             <span class="achieve-val" id="achMastered">0</span>
             <span class="achieve-lbl">累计掌握</span>
           </div>
-          <div class="achieve-item">
+          <div class="achieve-item" title="完美掌握" aria-label="完美掌握">
             <span class="achieve-val" id="achPerfect">0</span>
             <span class="achieve-lbl">完美掌握</span>
           </div>
-          <div class="achieve-item">
+          <div class="achieve-item" title="已复仇" aria-label="已复仇">
             <span class="achieve-val" id="achRevenge">0</span>
             <span class="achieve-lbl">已复仇</span>
           </div>
-          <div class="achieve-item">
+          <div class="achieve-item" title="探索进度" aria-label="探索进度">
             <span class="achieve-val" id="achExplored">0%</span>
             <span class="achieve-lbl">探索进度</span>
           </div>
         </div>
-        <button class="nav-link title-badge-link" onclick="showPanel('badges')">查看徽章馆</button>
       </div>
     </div>
 
@@ -307,50 +309,53 @@
 		    </div>
   </div>
 
-  <!-- 徽章馆面板 -->
-  <div class="panel" id="panel-badges">
-    <div class="badge-topbar">
-      <button class="nav-link" onclick="showPanel('home')">← 返回</button>
-      <h3 style="margin:0">徽章馆</h3>
-    </div>
+  <!-- 徽章馆弹窗 -->
+  <div class="badge-modal" id="badgeModal" hidden>
+    <div class="badge-modal-backdrop" onclick="closeBadgeModal()"></div>
+    <div class="badge-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="badgeModalTitle">
+      <div class="badge-topbar">
+        <button class="nav-link" onclick="closeBadgeModal()">关闭</button>
+        <h3 id="badgeModalTitle" style="margin:0">徽章馆</h3>
+      </div>
 
-    <div class="badge-hero">
-      <div>
-        <div class="badge-hero-label">当前称号</div>
-        <div class="badge-hero-title" id="badgePageTitle">词海新兵</div>
+      <div class="badge-hero">
+        <div>
+          <div class="badge-hero-label">当前称号</div>
+          <div class="badge-hero-title" id="badgePageTitle">词海新兵</div>
+        </div>
+        <div class="badge-hero-score">
+          <span id="badgePageScore">0</span>
+          <small>成就值</small>
+        </div>
       </div>
-      <div class="badge-hero-score">
-        <span id="badgePageScore">0</span>
-        <small>成就值</small>
-      </div>
-    </div>
 
-    <div class="badge-title-progress">
-      <div class="badge-title-row">
-        <span id="badgeTitleCurrent">词海新兵</span>
-        <span id="badgeTitleNext">下一称号</span>
+      <div class="badge-title-progress">
+        <div class="badge-title-row">
+          <span id="badgeTitleCurrent">词海新兵</span>
+          <span id="badgeTitleNext">下一称号</span>
+        </div>
+        <div class="title-progress" aria-hidden="true">
+          <span id="badgeTitleProgress"></span>
+        </div>
       </div>
-      <div class="title-progress" aria-hidden="true">
-        <span id="badgeTitleProgress"></span>
-      </div>
-    </div>
 
-    <div class="badge-summary-grid">
-      <div class="badge-summary-item">
-        <span id="badgeCollectedCount">0/0</span>
-        <small>已收集徽章</small>
+      <div class="badge-summary-grid">
+        <div class="badge-summary-item">
+          <span id="badgeCollectedCount">0/0</span>
+          <small>已收集徽章</small>
+        </div>
+        <div class="badge-summary-item">
+          <span id="badgeTierCount">0</span>
+          <small>已解锁等级</small>
+        </div>
+        <div class="badge-summary-item">
+          <span id="badgeNextGain">暂无</span>
+          <small>最近可进阶</small>
+        </div>
       </div>
-      <div class="badge-summary-item">
-        <span id="badgeTierCount">0</span>
-        <small>已解锁等级</small>
-      </div>
-      <div class="badge-summary-item">
-        <span id="badgeNextGain">暂无</span>
-        <small>最近可进阶</small>
-      </div>
-    </div>
 
-    <div class="badge-grid" id="badgeGrid"></div>
+      <div class="badge-grid" id="badgeGrid"></div>
+    </div>
   </div>
 
 <!-- 历史面板 -->

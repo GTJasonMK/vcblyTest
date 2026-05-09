@@ -597,6 +597,21 @@ export function renderBadgePage(historyList = []) {
   if (grid) grid.innerHTML = system.badges.map(renderBadgeCard).join('');
 }
 
+export function openBadgeModal(historyList = []) {
+  renderBadgePage(historyList);
+  const modal = document.getElementById('badgeModal');
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.classList.add('modal-open');
+}
+
+export function closeBadgeModal() {
+  const modal = document.getElementById('badgeModal');
+  if (!modal) return;
+  modal.hidden = true;
+  document.body.classList.remove('modal-open');
+}
+
 /** 渲染首页称号卡片（徽章细节在徽章馆中展示） */
 function renderAchievements(historyList = []) {
   const system = getBadgeSystem(historyList);
@@ -604,7 +619,7 @@ function renderAchievements(historyList = []) {
   positionAchievePanel();
 }
 
-/** 定位成就面板：左边缘对齐地图左边缘，上边缘对齐统计摘要栏，下边缘与开始测试卡片齐平 */
+/** 定位成就面板：左边缘对齐地图左边缘，可见卡片底边与开始测试卡片齐平 */
 function positionAchievePanel() {
   const panel = document.getElementById('achievePanel');
   if (!panel) return;
@@ -627,13 +642,17 @@ function positionAchievePanel() {
     const tr = testCard.getBoundingClientRect();
     const mr = map.getBoundingClientRect();
     const pr = container.getBoundingClientRect();
+    const metricCard = panel.querySelector('.metric-badge-card');
+    const panelRect = panel.getBoundingClientRect();
+    const contentRect = metricCard ? metricCard.getBoundingClientRect() : panelRect;
     const gap = 12;
     const left = mr.left - pr.left;
     const width = tr.left - mr.left - gap;
     panel.style.left = left + 'px';
-    panel.style.top = (tr.top - pr.top) + 'px';
     panel.style.width = width + 'px';
-    panel.style.height = tr.height + 'px';
+    panel.style.height = 'auto';
+    const visibleHeight = contentRect.bottom - panelRect.top;
+    panel.style.top = (tr.bottom - pr.top - visibleHeight) + 'px';
   });
 }
 
@@ -843,6 +862,7 @@ window.calSelectDate = (key) => {
 
 let _reviewDaySessions = [];  // 当天所有测试会话
 let _reviewSessionIdx = 0;   // 当前选中的会话索引
+let _reviewWordIdx = -1;     // 当前选中的错词索引
 
 function renderReviewBody(historyList, dateFilter) {
   const titleEl = document.getElementById('nbReviewTitle');
@@ -856,6 +876,8 @@ function renderReviewBody(historyList, dateFilter) {
     tabsEl.innerHTML = '';
     leftEl.innerHTML = '<p class="nb-empty-hint">点击日历中的日期查看详情</p>';
     rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+    _reviewDaySessions = [];
+    _reviewWordIdx = -1;
     return;
   }
 
@@ -868,6 +890,7 @@ function renderReviewBody(historyList, dateFilter) {
     tabsEl.innerHTML = '';
     leftEl.innerHTML = '<p class="nb-empty-hint">该日期暂无测试记录</p>';
     rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+    _reviewWordIdx = -1;
     return;
   }
 
@@ -893,6 +916,7 @@ function renderReviewBody(historyList, dateFilter) {
 /** 渲染左侧错词列表 */
 function renderReviewSessionWords(sessionIdx) {
   _reviewSessionIdx = sessionIdx;
+  _reviewWordIdx = -1;
   const leftEl = document.getElementById('nbReviewLeft');
   const rightEl = document.getElementById('nbReviewRight');
   if (!leftEl || !rightEl) return;
@@ -910,27 +934,36 @@ function renderReviewSessionWords(sessionIdx) {
   }
 
   leftEl.innerHTML = session.words.map((w, j) => `
-    <div class="nb-review-word" onclick="showWordDetail(${sessionIdx}, ${j})">
+    <div class="nb-review-word" data-word-idx="${j}" onclick="showWordDetail(${sessionIdx}, ${j})">
       <span class="rw-word">${j + 1}. ${w.w}</span>
       <span class="rw-pron">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
       ${renderAudioButton(w, 'audio-btn-compact')}
     </div>
   `).join('');
 
-  rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+  showNotebookWordDetail(sessionIdx, 0);
 }
 
 /** 右侧显示选中错词释义 */
-window.showWordDetail = (sessionIdx, wordIdx) => {
+function showNotebookWordDetail(sessionIdx, wordIdx, options = {}) {
   const session = _reviewDaySessions[sessionIdx];
   if (!session || !session.words) return;
   const w = session.words[wordIdx];
   if (!w) return;
 
+  _reviewSessionIdx = sessionIdx;
+  _reviewWordIdx = wordIdx;
+
   // 高亮选中项
   document.querySelectorAll('.nb-review-word').forEach((el, i) => {
     el.classList.toggle('selected', i === wordIdx);
   });
+  if (options.scroll) {
+    document.querySelector(`.nb-review-word[data-word-idx="${wordIdx}"]`)?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }
 
   const rightEl = document.getElementById('nbReviewRight');
   if (!rightEl) return;
@@ -942,12 +975,61 @@ window.showWordDetail = (sessionIdx, wordIdx) => {
     <div class="rw-detail-pron">${w.uk ? '英 ' + w.uk : ''}${w.us ? ' 美 ' + w.us : ''}</div>
     <div class="rw-detail-def">${w.d}</div>
   `;
+}
+
+window.showWordDetail = (sessionIdx, wordIdx) => {
+  showNotebookWordDetail(sessionIdx, wordIdx);
 };
 
 /** 切换测试会话 */
 window.selectReviewSession = (idx) => {
   renderReviewSessionWords(idx);
 };
+
+export function moveNotebookWord(delta) {
+  const session = _reviewDaySessions[_reviewSessionIdx];
+  if (!session || !session.words || session.words.length === 0) return false;
+
+  const current = _reviewWordIdx >= 0 ? _reviewWordIdx : 0;
+  const next = Math.min(Math.max(current + delta, 0), session.words.length - 1);
+  showNotebookWordDetail(_reviewSessionIdx, next, { scroll: true });
+  return true;
+}
+
+export function moveNotebookSession(delta) {
+  if (!_reviewDaySessions.length) return false;
+
+  const next = Math.min(Math.max(_reviewSessionIdx + delta, 0), _reviewDaySessions.length - 1);
+  if (next === _reviewSessionIdx) return true;
+  renderReviewSessionWords(next);
+  document.querySelector(`.nb-session-tab:nth-child(${next + 1})`)?.scrollIntoView({
+    block: 'nearest',
+    inline: 'nearest',
+  });
+  return true;
+}
+
+export function selectNotebookCurrentWord() {
+  const session = _reviewDaySessions[_reviewSessionIdx];
+  if (!session || !session.words || session.words.length === 0) return false;
+  const idx = _reviewWordIdx >= 0 ? _reviewWordIdx : 0;
+  showNotebookWordDetail(_reviewSessionIdx, idx, { scroll: true });
+  return true;
+}
+
+export function playNotebookSelectedAudio() {
+  const session = _reviewDaySessions[_reviewSessionIdx];
+  if (!session || !session.words || session.words.length === 0) return false;
+  const wordIdx = _reviewWordIdx >= 0 ? _reviewWordIdx : 0;
+  const word = session.words[wordIdx];
+  if (!word) return false;
+
+  const button = document.querySelector(`.nb-review-word[data-word-idx="${wordIdx}"] .audio-btn`);
+  if (!playWordAudio(word, getStoredWordIndex(word), button)) {
+    toast('当前单词暂无音频');
+  }
+  return true;
+}
 
 // ===== 底部卡片：柱状图（错词率趋势） =====
 
@@ -1273,10 +1355,21 @@ function updateMapRangeInfo() {
   info.textContent = `${inRange} 个词在 ${minDisp}‱ – ${maxDisp}‱ 范围内`;
 }
 
-/** 核密度估计 + 渲染概率分布曲线 */
+function getKdeSamples() {
+  if (!_mapProbs || _mapProbs.length === 0) return [];
+
+  const filtered = _mapProbs.filter(p => p >= _mapRangeMin && p <= _mapRangeMax);
+  const source = filtered.length > 0 ? filtered : _mapProbs;
+
+  // 用“相对平均概率”的尺度来画图，避免归一化到 0 附近后曲线挤成一根针。
+  return source.map(p => p * allWords.length);
+}
+
+/** 核密度估计 + 渲染当前概率地图分布曲线 */
 function renderDistChart() {
   const canvas = document.getElementById('probDistChart');
-  if (!canvas || !_mapProbs || _mapProbs.length === 0) return;
+  const samples = getKdeSamples();
+  if (!canvas || samples.length === 0) return;
 
   // 延迟到浏览器完成布局后读取坐标和渲染
   requestAnimationFrame(() => {
@@ -1309,32 +1402,33 @@ function renderDistChart() {
       canvas.style.height = displayH + 'px';
     }
 
-    drawDistCurve(canvas, w, h, dpr);
+    canvas.title = `当前 KDE 样本：${samples.length} 个词`;
+    drawDistCurve(canvas, w, h, dpr, samples);
   });
 }
 
 /** 绘制KDE概率密度曲线 */
-function drawDistCurve(canvas, w, h, dpr) {
+function drawDistCurve(canvas, w, h, dpr, samples) {
 
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
 
-  const probs = _mapProbs;
-  const n = probs.length;
+  const values = samples;
+  const n = values.length;
   const padX = 4, padY = 4;
 
   // 自动带宽（Silverman规则，对偏态数据做下限保护）
-  const mean = probs.reduce((a, b) => a + b, 0) / n;
-  const variance = probs.reduce((s, p) => s + (p - mean) ** 2, 0) / n;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((s, p) => s + (p - mean) ** 2, 0) / n;
   const std = Math.sqrt(variance);
-  const hBand = Math.max(0.9 * std * Math.pow(n, -0.2), mean * 0.02);
+  const hBand = Math.max(0.9 * std * Math.pow(n, -0.2), Math.max(0.12, mean * 0.08));
 
   // 评估范围：覆盖0到P99
-  const sorted = [...probs].sort((a, b) => a - b);
+  const sorted = [...values].sort((a, b) => a - b);
   const p99 = sorted[Math.floor(n * 0.99)];
   const xMin = 0;
-  const xMax = p99 * 1.1 || 1e-6;
+  const xMax = Math.max(p99 * 1.15, mean + hBand * 4, 1e-6);
 
   const steps = 100;
   const points = [];
@@ -1344,7 +1438,7 @@ function drawDistCurve(canvas, w, h, dpr) {
     const x = xMin + (xMax - xMin) * (i / steps);
     let density = 0;
     for (let j = 0; j < n; j++) {
-      const z = (x - probs[j]) / hBand;
+      const z = (x - values[j]) / hBand;
       density += Math.exp(-0.5 * z * z);
     }
     density /= n * hBand * Math.sqrt(2 * Math.PI);

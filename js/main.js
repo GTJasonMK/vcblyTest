@@ -98,15 +98,17 @@ window.playWordAudioFromButton = (button) => {
 };
 
 window.showPanel = (name) => {
+  if (name === 'badges') {
+    UI.openBadgeModal(loadHistory());
+    return;
+  }
+
   UI.showPanel(name);
   if (name === 'history') {
     UI.renderHistory(loadHistory());
   }
   if (name === 'notebook') {
     UI.renderNotebook(loadHistory());
-  }
-  if (name === 'badges') {
-    UI.renderBadgePage(loadHistory());
   }
   if (name === 'home') {
     UI.renderOverallStats(loadHistory());
@@ -154,7 +156,7 @@ window.importAll = (event) => {
       if (document.getElementById('panel-notebook').classList.contains('active')) {
         UI.renderNotebook(loadHistory());
       }
-      if (document.getElementById('panel-badges').classList.contains('active')) {
+      if (!document.getElementById('badgeModal').hidden) {
         UI.renderBadgePage(loadHistory());
       }
       // 更新设置输入
@@ -169,6 +171,8 @@ window.importAll = (event) => {
   event.target.value = '';
 };
 
+window.closeBadgeModal = () => UI.closeBadgeModal();
+
 function showHashPanel() {
   const params = new URLSearchParams(location.search);
   const hrefPanel = location.href.match(/[?&#]panel=([^&#]+)/)?.[1];
@@ -179,9 +183,36 @@ function showHashPanel() {
 }
 
 // ===== 键盘快捷键 =====
+function isEditableTarget(target) {
+  return target?.closest?.('input, textarea, select, [contenteditable="true"]');
+}
+
 document.addEventListener('keydown', e => {
+  if (isEditableTarget(e.target)) return;
+
+  const badgeModal = document.getElementById('badgeModal');
+  if (badgeModal && !badgeModal.hidden) {
+    if (e.key === 'Escape') UI.closeBadgeModal();
+    return;
+  }
+
   const testPanel = document.getElementById(PANEL.TEST);
   const reviewPanel = document.getElementById(PANEL.REVIEW);
+  const notebookPanel = document.getElementById(PANEL.NOTEBOOK);
+
+  // 错词本：上下选词，左右切换当天测试次数，P 播放发音
+  if (notebookPanel && notebookPanel.classList.contains('active')) {
+    const key = e.key.toLowerCase();
+    let handled = false;
+    if (e.key === 'ArrowUp' || key === 'k') handled = UI.moveNotebookWord(-1);
+    if (e.key === 'ArrowDown' || key === 'j') handled = UI.moveNotebookWord(1);
+    if (e.key === 'ArrowLeft' || key === 'a') handled = UI.moveNotebookSession(-1);
+    if (e.key === 'ArrowRight' || key === 'd') handled = UI.moveNotebookSession(1);
+    if (key === 'p') handled = UI.playNotebookSelectedAudio();
+    if (e.key === 'Enter' || e.key === ' ') handled = UI.selectNotebookCurrentWord();
+    if (handled) e.preventDefault();
+    return;
+  }
 
   // 复习模式：左右翻页
   if (reviewPanel && reviewPanel.classList.contains('active')) {
