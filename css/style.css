@@ -689,6 +689,62 @@ body.modal-open {
 }
 .nb-session-tab small { font-size: 0.65rem; opacity: 0.8; }
 
+.nb-mobile-controls {
+  display: none;
+}
+.nb-mobile-control-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nb-touch-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.nb-touch-btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.nb-touch-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.nb-touch-btn:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.nb-mobile-status,
+.nb-mobile-word-state {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-light);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nb-mobile-status {
+  flex: 0 0 88px;
+}
+.nb-mobile-word-state {
+  display: block;
+  padding: 0 4px;
+}
+
 /* 左右分栏 */
 .nb-review-split {
   flex: 1;
@@ -1919,18 +1975,113 @@ body.modal-open {
 /* ---- 历史面板 ---- */
 .history-list { text-align: left; }
 .history-item {
+  display: block;
+  width: 100%;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   margin-bottom: 10px;
+  background: var(--card-bg);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  appearance: none;
   cursor: pointer;
   transition: all var(--ease);
 }
 .history-item:hover { background: var(--bg); border-color: var(--accent); }
-.history-item .h-date { font-weight: 700; font-size: 0.95rem; }
-.history-item .h-count { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
-.history-detail { display: none; margin-top: 10px; }
-.history-detail.show { display: block; animation: panelIn 0.2s ease; }
+.history-item .h-date {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.history-item .h-count {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.history-item .h-open {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+.history-modal-dialog {
+  width: min(720px, calc(100vw - 48px));
+  text-align: left;
+}
+.history-modal-summary {
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+}
+.history-modal-date {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+.history-modal-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.history-modal-stats span {
+  min-width: 0;
+  padding: 8px 6px;
+  color: var(--text-light);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+.history-modal-words {
+  display: flex;
+  max-height: min(520px, 58dvh);
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.history-word-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+}
+.history-word-main {
+  flex: 1;
+  min-width: 0;
+}
+.history-word-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.98rem;
+}
+.history-word-main span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-light);
+  font-size: 0.75rem;
+}
+.history-word-def {
+  margin-top: 6px;
+  color: var(--text-light);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.history-modal-empty {
+  margin: 8px 0;
+  color: var(--text-muted);
+  text-align: center;
+}
 
 /* ---- 导航链接 ---- */
 .nav-links {
@@ -2103,6 +2254,36 @@ body.modal-open {
     max-height: calc(100dvh - 16px);
     padding: 10px;
   }
+  .history-modal-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 10px;
+  }
+  .history-modal-summary {
+    padding: 10px;
+  }
+  .history-modal-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .history-modal-stats span {
+    padding: 7px 5px;
+    font-size: 0.72rem;
+  }
+  .history-modal-words {
+    max-height: 54dvh;
+  }
+  .history-word-item {
+    padding: 9px 10px;
+  }
+  .history-word-main strong {
+    font-size: 0.92rem;
+  }
+  .history-word-main span,
+  .history-word-def {
+    font-size: 0.72rem;
+  }
   .title-badge-card,
   .metric-badge-card { min-height: 0; padding: 8px 6px 6px; }
   .title-progress { width: 78%; }
@@ -2157,8 +2338,15 @@ body.modal-open {
   }
   .nb-card-sub { font-size: 0.66rem; }
   #nbCardTop {
-    flex: 0 0 262px;
-    min-height: 0;
+    flex: 0 0 auto;
+    min-height: 292px;
+  }
+  #nbTabContentCal {
+    min-height: 232px;
+    overflow: visible;
+  }
+  #nbTabContentCal .nb-calendar {
+    min-height: 232px;
   }
   #nbCardTop .nb-card-header {
     flex-direction: column;
@@ -2184,7 +2372,7 @@ body.modal-open {
     gap: 2px;
   }
   .cal-cell {
-    min-height: 25px;
+    min-height: 24px;
     padding: 1px;
   }
   .cal-cell .cal-day {
@@ -2216,6 +2404,26 @@ body.modal-open {
   .nb-session-tab {
     font-size: 0.68rem;
     padding: 5px 8px;
+  }
+  .nb-mobile-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 7px 6px;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--card-bg);
+  }
+  .nb-touch-btn {
+    min-height: 40px;
+    padding: 7px 6px;
+    font-size: 0.74rem;
+  }
+  .nb-mobile-status {
+    flex-basis: 78px;
+    font-size: 0.68rem;
+  }
+  .nb-mobile-word-state {
+    font-size: 0.68rem;
   }
   .nb-review-split {
     flex: 0 0 auto;

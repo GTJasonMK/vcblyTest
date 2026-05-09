@@ -297,6 +297,19 @@
 		      </div>
 		      <!-- 顶栏：测试次数选择 -->
 		      <div class="nb-session-tabs" id="nbSessionTabs"></div>
+		      <div class="nb-mobile-controls" aria-label="错词本触控操作">
+		        <div class="nb-mobile-control-row">
+		          <button class="nb-touch-btn" id="nbMobilePrevSessionBtn" onclick="notebookPrevSession()" aria-label="上一场测试">‹ 次数</button>
+		          <span class="nb-mobile-status" id="nbMobileSessionState">未选择测试</span>
+		          <button class="nb-touch-btn" id="nbMobileNextSessionBtn" onclick="notebookNextSession()" aria-label="下一场测试">次数 ›</button>
+		        </div>
+		        <div class="nb-mobile-control-row">
+		          <button class="nb-touch-btn" id="nbMobilePrevWordBtn" onclick="notebookPrevWord()" aria-label="上一个错词">上词</button>
+		          <button class="nb-touch-btn nb-touch-btn-primary" id="nbMobilePlayBtn" onclick="notebookPlaySelectedAudio()" aria-label="播放当前错词发音">播放</button>
+		          <button class="nb-touch-btn" id="nbMobileNextWordBtn" onclick="notebookNextWord()" aria-label="下一个错词">下词</button>
+		        </div>
+		        <span class="nb-mobile-word-state" id="nbMobileWordState">选择日期后查看错词</span>
+		      </div>
 		      <!-- 下方：左右分栏 -->
 		      <div class="nb-review-split" id="nbReviewSplit">
 		        <div class="nb-review-left" id="nbReviewLeft">
@@ -367,6 +380,18 @@
     <div class="nav-links" style="margin-top:20px">
       <button class="nav-link" onclick="showPanel('home')">返回首页</button>
       <button class="nav-link" onclick="clearHistory()">清空历史</button>
+    </div>
+  </div>
+
+  <div class="badge-modal history-modal" id="historyModal" hidden>
+    <div class="badge-modal-backdrop" onclick="closeHistoryModal()"></div>
+    <div class="badge-modal-dialog history-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+      <div class="badge-topbar">
+        <button class="nav-link" onclick="closeHistoryModal()">关闭</button>
+        <h3 id="historyModalTitle" style="margin:0">历史详情</h3>
+      </div>
+      <div class="history-modal-summary" id="historyModalSummary"></div>
+      <div class="history-modal-words" id="historyModalWords"></div>
     </div>
   </div>
 </div>

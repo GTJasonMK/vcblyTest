@@ -130,6 +130,7 @@ window.resetAll = () => {
 window.clearHistory = () => {
   if (!confirm('确定清空全部历史记录吗？此操作不可恢复。')) return;
   clearHistory();
+  UI.closeHistoryModal();
   UI.renderHistory([]);
   UI.toast('历史记录已清空');
 };
@@ -193,6 +194,11 @@ document.addEventListener('keydown', e => {
   const badgeModal = document.getElementById('badgeModal');
   if (badgeModal && !badgeModal.hidden) {
     if (e.key === 'Escape') UI.closeBadgeModal();
+    return;
+  }
+  const historyModal = document.getElementById('historyModal');
+  if (historyModal && !historyModal.hidden) {
+    if (e.key === 'Escape') UI.closeHistoryModal();
     return;
   }
 

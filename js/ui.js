@@ -23,6 +23,10 @@ function escapeAttr(value) {
   }[ch]));
 }
 
+function escapeHtml(value) {
+  return escapeAttr(value);
+}
+
 function getStoredWordIndex(word) {
   if (Number.isInteger(word?.idx)) return word.idx;
   if (Number.isInteger(word?.wordIndex)) return word.wordIndex - 1;
@@ -657,38 +661,90 @@ function positionAchievePanel() {
 }
 
 // ===== 历史面板渲染 =====
+let _historyModalList = [];
+
 export function renderHistory(historyList) {
   const listEl = document.getElementById('historyList');
+  _historyModalList = Array.isArray(historyList) ? historyList : [];
 
-  if (historyList.length === 0) {
+  if (_historyModalList.length === 0) {
     listEl.innerHTML = '<p style="color:var(--text-light);text-align:center">暂无记录</p>';
     return;
   }
 
-  listEl.innerHTML = historyList.slice().reverse().map((h, i) => {
+  listEl.innerHTML = _historyModalList.map((h, index) => ({ h, index })).reverse().map(({ h, index }) => {
     const d = new Date(h.date);
+    const tested = h.testedCount ?? h.words?.length ?? 0;
+    const correct = h.correctCount ?? Math.max(tested - (h.words?.length || 0), 0);
+    const wrong = h.words?.length || 0;
     return `
-      <div class="history-item" onclick="this.querySelector('.history-detail').classList.toggle('show')">
-        <div class="h-date">${d.toLocaleString('zh-CN')}</div>
-        <div class="h-count">测试 ${h.testedCount || h.words.length} 词 · 正确 ${h.correctCount || '?'} 词 · 不会 ${h.words.length} 词</div>
-        <div class="history-detail">
-          ${h.words.map((w, j) => `
-            <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:0.9rem">
-              <div class="history-word-row">
-                <div>
-                  <strong>${j + 1}. ${w.w}</strong>
-                  <span style="color:var(--text-light);font-size:0.8rem">${w.uk ? '英' + w.uk : ''}${w.us ? ' 美' + w.us : ''}</span>
-                </div>
-                ${renderAudioButton(w)}
-              </div>
-              <div style="color:var(--text-light);font-size:0.85rem;white-space:pre-line">${w.d}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+      <button class="history-item" type="button" onclick="openHistoryDetail(${index})">
+        <span class="h-date">${escapeHtml(d.toLocaleString('zh-CN'))}</span>
+        <span class="h-count">测试 ${tested} 词 · 正确 ${correct} 词 · 不会 ${wrong} 词</span>
+        <span class="h-open">查看错词</span>
+      </button>
     `;
   }).join('');
 }
+
+export function openHistoryModal(index) {
+  const h = _historyModalList[index];
+  if (!h) return;
+
+  const titleEl = document.getElementById('historyModalTitle');
+  const summaryEl = document.getElementById('historyModalSummary');
+  const wordsEl = document.getElementById('historyModalWords');
+  const modal = document.getElementById('historyModal');
+  if (!titleEl || !summaryEl || !wordsEl || !modal) return;
+
+  const d = new Date(h.date);
+  const words = h.words || [];
+  const tested = h.testedCount ?? words.length;
+  const correct = h.correctCount ?? Math.max(tested - words.length, 0);
+  const wrong = words.length;
+  const accuracy = tested > 0 ? Math.round((correct / tested) * 100) : 0;
+
+  titleEl.textContent = '历史详情';
+  summaryEl.innerHTML = `
+    <div class="history-modal-date">${escapeHtml(d.toLocaleString('zh-CN'))}</div>
+    <div class="history-modal-stats">
+      <span>测试 ${tested}</span>
+      <span>正确 ${correct}</span>
+      <span>不会 ${wrong}</span>
+      <span>正确率 ${accuracy}%</span>
+    </div>
+  `;
+
+  wordsEl.innerHTML = words.length > 0
+    ? words.map((w, j) => `
+      <div class="history-word-item">
+        <div class="history-word-row">
+          <div class="history-word-main">
+            <strong>${j + 1}. ${escapeHtml(w.w)}</strong>
+            <span>${w.uk ? '英' + escapeHtml(w.uk) : ''}${w.us ? ' 美' + escapeHtml(w.us) : ''}</span>
+          </div>
+          ${renderAudioButton(w)}
+        </div>
+        <div class="history-word-def">${escapeHtml(w.d)}</div>
+      </div>
+    `).join('')
+    : '<p class="history-modal-empty">本次没有错词</p>';
+
+  modal.hidden = false;
+  modal.scrollTop = 0;
+  wordsEl.scrollTop = 0;
+  document.body.classList.add('modal-open');
+}
+
+export function closeHistoryModal() {
+  const modal = document.getElementById('historyModal');
+  if (!modal) return;
+  modal.hidden = true;
+  document.body.classList.remove('modal-open');
+}
+
+window.openHistoryDetail = index => openHistoryModal(index);
+window.closeHistoryModal = () => closeHistoryModal();
 
 // ===== 复习面板渲染 =====
 export function renderReviewWord(index, total) {
@@ -864,6 +920,40 @@ let _reviewDaySessions = [];  // 当天所有测试会话
 let _reviewSessionIdx = 0;   // 当前选中的会话索引
 let _reviewWordIdx = -1;     // 当前选中的错词索引
 
+function setNotebookTouchDisabled(id, disabled) {
+  const el = document.getElementById(id);
+  if (el) el.disabled = disabled;
+}
+
+function updateNotebookMobileControls() {
+  const sessionState = document.getElementById('nbMobileSessionState');
+  const wordState = document.getElementById('nbMobileWordState');
+  const hasSessions = _reviewDaySessions.length > 0;
+  const session = hasSessions ? _reviewDaySessions[_reviewSessionIdx] : null;
+  const words = session?.words || [];
+  const hasWords = words.length > 0;
+  const wordIdx = _reviewWordIdx >= 0 ? _reviewWordIdx : 0;
+
+  setNotebookTouchDisabled('nbMobilePrevSessionBtn', !hasSessions || _reviewSessionIdx <= 0);
+  setNotebookTouchDisabled('nbMobileNextSessionBtn', !hasSessions || _reviewSessionIdx >= _reviewDaySessions.length - 1);
+  setNotebookTouchDisabled('nbMobilePrevWordBtn', !hasWords || wordIdx <= 0);
+  setNotebookTouchDisabled('nbMobileNextWordBtn', !hasWords || wordIdx >= words.length - 1);
+  setNotebookTouchDisabled('nbMobilePlayBtn', !hasWords);
+
+  if (sessionState) {
+    sessionState.textContent = hasSessions
+      ? `第${_reviewSessionIdx + 1}/${_reviewDaySessions.length}次`
+      : '未选择测试';
+  }
+  if (wordState) {
+    if (hasWords) {
+      wordState.textContent = `${wordIdx + 1}/${words.length} · ${words[wordIdx]?.w || ''}`;
+    } else {
+      wordState.textContent = hasSessions ? '本次全部正确' : '选择日期后查看错词';
+    }
+  }
+}
+
 function renderReviewBody(historyList, dateFilter) {
   const titleEl = document.getElementById('nbReviewTitle');
   const tabsEl = document.getElementById('nbSessionTabs');
@@ -878,6 +968,7 @@ function renderReviewBody(historyList, dateFilter) {
     rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
     _reviewDaySessions = [];
     _reviewWordIdx = -1;
+    updateNotebookMobileControls();
     return;
   }
 
@@ -891,6 +982,7 @@ function renderReviewBody(historyList, dateFilter) {
     leftEl.innerHTML = '<p class="nb-empty-hint">该日期暂无测试记录</p>';
     rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
     _reviewWordIdx = -1;
+    updateNotebookMobileControls();
     return;
   }
 
@@ -930,6 +1022,7 @@ function renderReviewSessionWords(sessionIdx) {
   if (!session || !session.words || session.words.length === 0) {
     leftEl.innerHTML = '<p class="nb-empty-hint">该次测试全部正确 ✓</p>';
     rightEl.innerHTML = '<p class="nb-empty-hint">点击错词查看释义</p>';
+    updateNotebookMobileControls();
     return;
   }
 
@@ -975,6 +1068,7 @@ function showNotebookWordDetail(sessionIdx, wordIdx, options = {}) {
     <div class="rw-detail-pron">${w.uk ? '英 ' + w.uk : ''}${w.us ? ' 美 ' + w.us : ''}</div>
     <div class="rw-detail-def">${w.d}</div>
   `;
+  updateNotebookMobileControls();
 }
 
 window.showWordDetail = (sessionIdx, wordIdx) => {
@@ -1030,6 +1124,12 @@ export function playNotebookSelectedAudio() {
   }
   return true;
 }
+
+window.notebookPrevWord = () => moveNotebookWord(-1);
+window.notebookNextWord = () => moveNotebookWord(1);
+window.notebookPrevSession = () => moveNotebookSession(-1);
+window.notebookNextSession = () => moveNotebookSession(1);
+window.notebookPlaySelectedAudio = () => playNotebookSelectedAudio();
 
 // ===== 底部卡片：柱状图（错词率趋势） =====
 
