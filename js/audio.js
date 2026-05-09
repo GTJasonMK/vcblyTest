@@ -1,5 +1,14 @@
 // ========== 单词音频播放 ==========
 
+import {
+  cacheAudioAfterPlay,
+  clearAudioCache as clearCachedAudio,
+  getAudioCacheStats as readAudioCacheStats,
+  getCachedAudioUrl,
+  preloadAudioPath,
+  registerAudioServiceWorker as registerAudioSW,
+} from './audio-cache.js';
+
 const player = new Audio();
 let activeButton = null;
 let activePath = '';
@@ -58,7 +67,7 @@ export function playWordAudio(word, zeroBasedIndex, button = null) {
   }
 
   player.pause();
-  player.src = path;
+  player.src = getCachedAudioUrl(path);
   try {
     player.currentTime = 0;
   } catch {
@@ -67,6 +76,7 @@ export function playWordAudio(word, zeroBasedIndex, button = null) {
   activeButton = button;
   activePath = path;
   setButtonPlaying(activeButton, true);
+  cacheAudioAfterPlay(path);
 
   const playResult = player.play();
   if (playResult && typeof playResult.catch === 'function') {
@@ -86,4 +96,30 @@ export function playWordAudioFromButton(button) {
   const rawIndex = button.dataset.audioIndex;
   const index = rawIndex === undefined ? undefined : Number(rawIndex);
   return playWordAudio(word, Number.isInteger(index) ? index : undefined, button);
+}
+
+export function preloadWordAudio(word, zeroBasedIndex, options = {}) {
+  const path = getAudioPath(word, zeroBasedIndex);
+  if (!path) return Promise.resolve(false);
+  return preloadAudioPath(path, options);
+}
+
+export function preloadWordAudioList(items, options = {}) {
+  if (!Array.isArray(items) || items.length === 0) return;
+  items.forEach(item => {
+    if (!item) return;
+    preloadWordAudio(item.word, item.index, options);
+  });
+}
+
+export function clearAudioCache() {
+  return clearCachedAudio();
+}
+
+export function getAudioCacheStats() {
+  return readAudioCacheStats();
+}
+
+export function registerAudioServiceWorker() {
+  return registerAudioSW();
 }

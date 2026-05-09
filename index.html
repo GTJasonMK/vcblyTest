@@ -116,6 +116,8 @@
       <button class="nav-link" onclick="document.getElementById('importFile').click()">导入数据</button>
       <input type="file" id="importFile" accept=".json" style="display:none">
       <span class="nav-divider">·</span>
+      <button class="nav-link" onclick="clearAudioCache()">清理音频缓存</button>
+      <span class="nav-divider">·</span>
       <button class="nav-link" onclick="resetAll()">重置数据</button>
     </div>
 
@@ -295,22 +297,9 @@
 		      <div class="nb-card-header">
 		        <span class="nb-card-title" id="nbReviewTitle">📋 选择日期查看错词</span>
 		      </div>
-		      <!-- 顶栏：测试次数选择 -->
-		      <div class="nb-session-tabs" id="nbSessionTabs"></div>
-		      <div class="nb-mobile-controls" aria-label="错词本触控操作">
-		        <div class="nb-mobile-control-row">
-		          <button class="nb-touch-btn" id="nbMobilePrevSessionBtn" onclick="notebookPrevSession()" aria-label="上一场测试">‹ 次数</button>
-		          <span class="nb-mobile-status" id="nbMobileSessionState">未选择测试</span>
-		          <button class="nb-touch-btn" id="nbMobileNextSessionBtn" onclick="notebookNextSession()" aria-label="下一场测试">次数 ›</button>
-		        </div>
-		        <div class="nb-mobile-control-row">
-		          <button class="nb-touch-btn" id="nbMobilePrevWordBtn" onclick="notebookPrevWord()" aria-label="上一个错词">上词</button>
-		          <button class="nb-touch-btn nb-touch-btn-primary" id="nbMobilePlayBtn" onclick="notebookPlaySelectedAudio()" aria-label="播放当前错词发音">播放</button>
-		          <button class="nb-touch-btn" id="nbMobileNextWordBtn" onclick="notebookNextWord()" aria-label="下一个错词">下词</button>
-		        </div>
-		        <span class="nb-mobile-word-state" id="nbMobileWordState">选择日期后查看错词</span>
-		      </div>
-		      <!-- 下方：左右分栏 -->
+			      <!-- 顶栏：测试次数选择 -->
+			      <div class="nb-session-tabs" id="nbSessionTabs"></div>
+			      <!-- 下方：左右分栏 -->
 		      <div class="nb-review-split" id="nbReviewSplit">
 		        <div class="nb-review-left" id="nbReviewLeft">
 		          <p class="nb-empty-hint">点击日历中的日期查看详情</p>

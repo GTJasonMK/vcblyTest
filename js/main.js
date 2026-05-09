@@ -5,7 +5,7 @@ import { loadSettings, loadHistory, saveHistory, clearHistory, clearAll, loadThe
 import { setMaxUnknownInput } from './ui.js';
 import * as UI from './ui.js';
 import * as Session from './session.js';
-import { playWordAudioFromButton } from './audio.js';
+import { clearAudioCache, playWordAudioFromButton, registerAudioServiceWorker } from './audio.js';
 import { PANEL } from './constants.js';
 
 // ===== 主题管理 =====
@@ -46,6 +46,7 @@ function initTheme() {
 // ===== 初始化 =====
 function init() {
   initTheme();
+  registerAudioServiceWorker();
 
   const count = initWords();
   const subtitle = document.querySelector('.subtitle');
@@ -95,6 +96,11 @@ window.playWordAudioFromButton = (button) => {
   if (!playWordAudioFromButton(button)) {
     UI.toast('当前单词暂无音频');
   }
+};
+
+window.clearAudioCache = async () => {
+  await clearAudioCache();
+  UI.toast('音频缓存已清空');
 };
 
 window.showPanel = (name) => {

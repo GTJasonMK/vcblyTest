@@ -4,7 +4,7 @@ import { allWords, session, getCurrentWord, getCurrentWordIndex, resetSession, r
 import { updateSettings } from './state.js';
 import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession, loadWordStats, recordWordResult } from './storage.js';
 import * as UI from './ui.js';
-import { playWordAudio } from './audio.js';
+import { playWordAudio, preloadWordAudioList } from './audio.js';
 
 /** 计算每词基础权重（基于历史统计） */
 function computeBaseWeight(stats, idx) {
@@ -71,6 +71,14 @@ function generateOptions(correctIdx) {
 /** 自动保存当前测试进度 */
 function autoSave() {
   saveSession(session);
+}
+
+function preloadTestAudioWindow() {
+  const indices = session.order.slice(session.cursor, session.cursor + 5);
+  preloadWordAudioList(
+    indices.map(idx => ({ word: allWords[idx], index: idx })),
+    { priority: 'high', warmMemory: true, prefetchedOnly: true }
+  );
 }
 
 /** 开始本次测试 */
@@ -157,6 +165,7 @@ export function resumeSession() {
   }
 
   UI.updateProgress();
+  preloadTestAudioWindow();
 }
 
 /** 显示当前单词及其选项 */
@@ -170,6 +179,7 @@ function showCurrentWord() {
   session.answered = false;
 
   UI.renderOptions(options);
+  preloadTestAudioWindow();
 }
 
 /** 播放当前测试单词发音 */
@@ -341,12 +351,14 @@ export function startReview() {
   reviewIndex = 0;
   UI.showPanel('review');
   UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
+  preloadReviewAudioWindow();
 }
 
 export function reviewPrev() {
   if (reviewIndex > 0) {
     reviewIndex--;
     UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
+    preloadReviewAudioWindow();
   }
 }
 
@@ -354,7 +366,17 @@ export function reviewNext() {
   if (reviewIndex < session.todayUnknown.length - 1) {
     reviewIndex++;
     UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
+    preloadReviewAudioWindow();
   }
+}
+
+function preloadReviewAudioWindow() {
+  const start = Math.max(0, reviewIndex - 2);
+  const words = session.todayUnknown.slice(start, reviewIndex + 3);
+  preloadWordAudioList(
+    words.map(w => ({ word: w, index: w.idx })),
+    { priority: 'high', warmMemory: true, prefetchedOnly: true }
+  );
 }
 
 /** 播放当前复习单词发音 */

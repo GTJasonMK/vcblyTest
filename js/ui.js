@@ -2,7 +2,7 @@
 
 import { PANEL, TOAST_DURATION } from './constants.js';
 import { allWords, session } from './state.js';
-import { getAudioPath, playWordAudio, updateAudioButton } from './audio.js';
+import { getAudioPath, playWordAudio, preloadWordAudio, preloadWordAudioList, updateAudioButton } from './audio.js';
 import { loadWordStats } from './storage.js';
 
 const AUDIO_ICON = `
@@ -33,6 +33,20 @@ function getStoredWordIndex(word) {
   return undefined;
 }
 
+function toAudioItem(word) {
+  return { word, index: getStoredWordIndex(word) };
+}
+
+function preloadWordWindow(words, centerIdx, radius = 3) {
+  if (!Array.isArray(words) || words.length === 0) return;
+  const start = Math.max(0, centerIdx - radius);
+  const end = Math.min(words.length, centerIdx + radius + 1);
+  preloadWordAudioList(
+    words.slice(start, end).map(toAudioItem),
+    { priority: 'high', warmMemory: true, prefetchedOnly: true }
+  );
+}
+
 function renderAudioButton(word, extraClass = '') {
   const idx = getStoredWordIndex(word);
   if (!getAudioPath(word, idx)) return '';
@@ -43,6 +57,28 @@ function renderAudioButton(word, extraClass = '') {
     <button class="audio-btn audio-btn-inline ${extraClass}" onclick="event.stopPropagation();playWordAudioFromButton(this)" data-audio-word="${escapeAttr(spelling)}"${indexAttr} title="播放发音" aria-label="播放 ${escapeAttr(spelling)} 发音">
       ${AUDIO_ICON}
     </button>
+  `;
+}
+
+function renderNotebookGamepadControls() {
+  return `
+    <div class="nb-mobile-gamepad" aria-label="错词本触控操作">
+      <button type="button" class="nb-pad-btn nb-pad-up" id="nbMobilePrevWordBtn" onclick="notebookPrevWord()" title="上一个错词" aria-label="上一个错词">
+        <span aria-hidden="true">↑</span>
+      </button>
+      <button type="button" class="nb-pad-btn nb-pad-left" id="nbMobilePrevSessionBtn" onclick="notebookPrevSession()" title="上一场测试" aria-label="上一场测试">
+        <span aria-hidden="true">←</span>
+      </button>
+      <button type="button" class="nb-pad-btn nb-pad-center" id="nbMobilePlayBtn" onclick="notebookPlaySelectedAudio(this)" title="播放发音" aria-label="播放当前错词发音">
+        ${AUDIO_ICON}
+      </button>
+      <button type="button" class="nb-pad-btn nb-pad-right" id="nbMobileNextSessionBtn" onclick="notebookNextSession()" title="下一场测试" aria-label="下一场测试">
+        <span aria-hidden="true">→</span>
+      </button>
+      <button type="button" class="nb-pad-btn nb-pad-down" id="nbMobileNextWordBtn" onclick="notebookNextWord()" title="下一个错词" aria-label="下一个错词">
+        <span aria-hidden="true">↓</span>
+      </button>
+    </div>
   `;
 }
 
@@ -160,6 +196,10 @@ export function renderResult() {
         <div class="wl-def">${w.d}</div>
       </div>
     `).join('');
+    preloadWordAudioList(
+      words.slice(0, 20).map(toAudioItem),
+      { priority: 'normal', warmMemory: true, prefetchedOnly: true }
+    );
   }
 }
 
@@ -734,6 +774,11 @@ export function openHistoryModal(index) {
   modal.scrollTop = 0;
   wordsEl.scrollTop = 0;
   document.body.classList.add('modal-open');
+
+  preloadWordAudioList(
+    words.slice(0, 10).map(toAudioItem),
+    { priority: 'normal', warmMemory: true, prefetchedOnly: true }
+  );
 }
 
 export function closeHistoryModal() {
@@ -756,6 +801,7 @@ export function renderReviewWord(index, total) {
   document.getElementById('reviewPronUs').textContent = w.us ? `美 ${w.us}` : '';
   document.getElementById('reviewDef').textContent = w.d;
   document.getElementById('reviewIndex').textContent = `${index + 1} / ${total}`;
+  preloadWordAudio(w, getStoredWordIndex(w), { priority: 'high', warmMemory: true, prefetchedOnly: true });
 }
 
 // ===== 设置面板：读取用户输入 =====
@@ -926,32 +972,19 @@ function setNotebookTouchDisabled(id, disabled) {
 }
 
 function updateNotebookMobileControls() {
-  const sessionState = document.getElementById('nbMobileSessionState');
-  const wordState = document.getElementById('nbMobileWordState');
   const hasSessions = _reviewDaySessions.length > 0;
   const session = hasSessions ? _reviewDaySessions[_reviewSessionIdx] : null;
   const words = session?.words || [];
   const hasWords = words.length > 0;
   const wordIdx = _reviewWordIdx >= 0 ? _reviewWordIdx : 0;
+  const currentWord = hasWords ? words[wordIdx] : null;
+  const hasAudio = !!getAudioPath(currentWord, getStoredWordIndex(currentWord));
 
   setNotebookTouchDisabled('nbMobilePrevSessionBtn', !hasSessions || _reviewSessionIdx <= 0);
   setNotebookTouchDisabled('nbMobileNextSessionBtn', !hasSessions || _reviewSessionIdx >= _reviewDaySessions.length - 1);
   setNotebookTouchDisabled('nbMobilePrevWordBtn', !hasWords || wordIdx <= 0);
   setNotebookTouchDisabled('nbMobileNextWordBtn', !hasWords || wordIdx >= words.length - 1);
-  setNotebookTouchDisabled('nbMobilePlayBtn', !hasWords);
-
-  if (sessionState) {
-    sessionState.textContent = hasSessions
-      ? `第${_reviewSessionIdx + 1}/${_reviewDaySessions.length}次`
-      : '未选择测试';
-  }
-  if (wordState) {
-    if (hasWords) {
-      wordState.textContent = `${wordIdx + 1}/${words.length} · ${words[wordIdx]?.w || ''}`;
-    } else {
-      wordState.textContent = hasSessions ? '本次全部正确' : '选择日期后查看错词';
-    }
-  }
+  setNotebookTouchDisabled('nbMobilePlayBtn', !hasAudio);
 }
 
 function renderReviewBody(historyList, dateFilter) {
@@ -1060,15 +1093,25 @@ function showNotebookWordDetail(sessionIdx, wordIdx, options = {}) {
 
   const rightEl = document.getElementById('nbReviewRight');
   if (!rightEl) return;
+  const pronText = [
+    w.uk ? `英 ${w.uk}` : '',
+    w.us ? `美 ${w.us}` : '',
+  ].filter(Boolean).join(' ');
   rightEl.innerHTML = `
-    <div class="rw-detail-head">
-      <div class="rw-detail-word">${w.w}</div>
-      ${renderAudioButton(w)}
+    <div class="rw-detail-top">
+      <div class="rw-detail-main">
+        <div class="rw-detail-head">
+          <div class="rw-detail-word">${escapeHtml(w.w)}</div>
+          ${renderAudioButton(w, 'rw-detail-audio')}
+        </div>
+        <div class="rw-detail-pron">${escapeHtml(pronText)}</div>
+      </div>
+      ${renderNotebookGamepadControls()}
     </div>
-    <div class="rw-detail-pron">${w.uk ? '英 ' + w.uk : ''}${w.us ? ' 美 ' + w.us : ''}</div>
-    <div class="rw-detail-def">${w.d}</div>
+    <div class="rw-detail-def">${escapeHtml(w.d)}</div>
   `;
   updateNotebookMobileControls();
+  preloadWordWindow(session.words, wordIdx, 3);
 }
 
 window.showWordDetail = (sessionIdx, wordIdx) => {
@@ -1111,14 +1154,21 @@ export function selectNotebookCurrentWord() {
   return true;
 }
 
-export function playNotebookSelectedAudio() {
+export function playNotebookSelectedAudio(triggerButton = null) {
   const session = _reviewDaySessions[_reviewSessionIdx];
   if (!session || !session.words || session.words.length === 0) return false;
   const wordIdx = _reviewWordIdx >= 0 ? _reviewWordIdx : 0;
   const word = session.words[wordIdx];
   if (!word) return false;
 
-  const button = document.querySelector(`.nb-review-word[data-word-idx="${wordIdx}"] .audio-btn`);
+  const gamepadButton = document.getElementById('nbMobilePlayBtn');
+  const detailButton = document.querySelector('#nbReviewRight .rw-detail-audio');
+  const listButton = document.querySelector(`.nb-review-word[data-word-idx="${wordIdx}"] .audio-btn`);
+  const button = triggerButton
+    || (gamepadButton?.offsetParent ? gamepadButton : null)
+    || detailButton
+    || listButton
+    || gamepadButton;
   if (!playWordAudio(word, getStoredWordIndex(word), button)) {
     toast('当前单词暂无音频');
   }
@@ -1129,7 +1179,7 @@ window.notebookPrevWord = () => moveNotebookWord(-1);
 window.notebookNextWord = () => moveNotebookWord(1);
 window.notebookPrevSession = () => moveNotebookSession(-1);
 window.notebookNextSession = () => moveNotebookSession(1);
-window.notebookPlaySelectedAudio = () => playNotebookSelectedAudio();
+window.notebookPlaySelectedAudio = (button) => playNotebookSelectedAudio(button);
 
 // ===== 底部卡片：柱状图（错词率趋势） =====
 
@@ -1574,6 +1624,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('nbWordMap');
   if (!canvas) return;
   const tooltip = document.getElementById('mapTooltip');
+  const canHoverPrefetch = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+  let hoverAudioTimer = null;
+  let lastHoverAudioIdx = -1;
 
   function getMapHit(e) {
     if (!_mapLayout || !_mapProbs) return;
@@ -1605,9 +1658,17 @@ document.addEventListener('DOMContentLoaded', () => {
       tooltip.style.left = (e.clientX + 14) + 'px';
       tooltip.style.top = (e.clientY - 10) + 'px';
       canvas.style.cursor = 'pointer';
+      if (canHoverPrefetch && lastHoverAudioIdx !== hit.idx) {
+        clearTimeout(hoverAudioTimer);
+        hoverAudioTimer = setTimeout(() => {
+          lastHoverAudioIdx = hit.idx;
+          preloadWordAudio(w, hit.idx, { priority: 'normal', warmMemory: true, prefetchedOnly: true });
+        }, 150);
+      }
     } else {
       tooltip.style.display = 'none';
       canvas.style.cursor = 'crosshair';
+      clearTimeout(hoverAudioTimer);
     }
   });
 
@@ -1622,6 +1683,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   canvas.addEventListener('mouseleave', () => {
     tooltip.style.display = 'none';
+    clearTimeout(hoverAudioTimer);
   });
 });
 

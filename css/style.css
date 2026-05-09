@@ -689,60 +689,75 @@ body.modal-open {
 }
 .nb-session-tab small { font-size: 0.65rem; opacity: 0.8; }
 
-.nb-mobile-controls {
+.nb-mobile-gamepad {
   display: none;
+  flex: 0 0 auto;
+  grid-template-columns: 30px 34px 30px;
+  grid-template-rows: 30px 34px 30px;
+  grid-template-areas:
+    ". up ."
+    "left center right"
+    ". down .";
+  gap: 3px;
+  align-items: center;
+  justify-items: center;
+  width: 100px;
+  height: 100px;
 }
-.nb-mobile-control-row {
+.nb-pad-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 9px;
+  background: var(--text);
+  color: var(--card-bg);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 3px 0 rgba(0,0,0,0.16), 0 6px 12px rgba(0,0,0,0.12);
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-.nb-touch-btn {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 38px;
-  padding: 7px 8px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--text);
+  justify-content: center;
   font-family: inherit;
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: all var(--ease);
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background var(--ease), opacity var(--ease);
 }
-.nb-touch-btn-primary {
+.nb-pad-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nb-pad-up { grid-area: up; }
+.nb-pad-left { grid-area: left; }
+.nb-pad-center {
+  grid-area: center;
+  width: 34px;
+  height: 34px;
+  border-color: var(--accent-hover);
+  border-radius: 50%;
   background: var(--accent);
   color: #fff;
-  border-color: var(--accent);
 }
-.nb-touch-btn:active:not(:disabled) {
-  transform: scale(0.97);
+.nb-pad-right { grid-area: right; }
+.nb-pad-down { grid-area: down; }
+.nb-pad-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.18), 0 1px 0 rgba(0,0,0,0.16), 0 3px 8px rgba(0,0,0,0.1);
 }
-.nb-touch-btn:disabled {
-  opacity: 0.42;
+.nb-pad-btn:disabled {
+  opacity: 0.34;
   cursor: default;
+  transform: none;
 }
-.nb-mobile-status,
-.nb-mobile-word-state {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-light);
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1.25;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nb-mobile-status {
-  flex: 0 0 88px;
-}
-.nb-mobile-word-state {
-  display: block;
-  padding: 0 4px;
+.nb-pad-center.playing {
+  background: var(--green);
+  border-color: var(--green-hover);
 }
 
 /* 左右分栏 */
@@ -807,6 +822,15 @@ body.modal-open {
 }
 
 /* 右侧单词详情 */
+.rw-detail-top {
+  margin-bottom: 14px;
+}
+.rw-detail-top .rw-detail-pron {
+  margin-bottom: 0;
+}
+.rw-detail-main {
+  min-width: 0;
+}
 .rw-detail-word {
   font-size: 1.6rem;
   font-weight: 700;
@@ -2405,26 +2429,6 @@ body.modal-open {
     font-size: 0.68rem;
     padding: 5px 8px;
   }
-  .nb-mobile-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 7px 6px;
-    border-bottom: 1px solid var(--border-light);
-    background: var(--card-bg);
-  }
-  .nb-touch-btn {
-    min-height: 40px;
-    padding: 7px 6px;
-    font-size: 0.74rem;
-  }
-  .nb-mobile-status {
-    flex-basis: 78px;
-    font-size: 0.68rem;
-  }
-  .nb-mobile-word-state {
-    font-size: 0.68rem;
-  }
   .nb-review-split {
     flex: 0 0 auto;
     flex-direction: column;
@@ -2454,6 +2458,43 @@ body.modal-open {
     max-width: 42%;
     font-size: 0.62rem;
   }
+  .rw-detail-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .rw-detail-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+  }
+  .rw-detail-audio {
+    display: none;
+  }
+  .nb-mobile-gamepad {
+    display: grid;
+    grid-template-columns: 28px 32px 28px;
+    grid-template-rows: 28px 32px 28px;
+    width: 94px;
+    height: 94px;
+    gap: 3px;
+  }
+  .nb-pad-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+  }
+  .nb-pad-center {
+    width: 32px;
+    height: 32px;
+  }
+  .nb-pad-btn svg {
+    width: 14px;
+    height: 14px;
+  }
   .rw-detail-head {
     justify-content: flex-start;
     margin-bottom: 4px;
@@ -2463,7 +2504,7 @@ body.modal-open {
     line-height: 1.2;
   }
   .rw-detail-pron {
-    margin-bottom: 8px;
+    margin-bottom: 0;
     font-size: 0.76rem;
     text-align: left;
   }
