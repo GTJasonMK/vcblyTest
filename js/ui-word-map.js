@@ -65,15 +65,11 @@ function buildMapLayout(rates, canvasWidth) {
   return items;
 }
 
-/** 正确率 → 颜色：高正确率（掌握好）→ 深绿，低正确率（未掌握）→ 红/透明 */
+/** 正确率 → 颜色：低正确率 → 透明，高正确率 → 绿色 */
 function rateToColor(rate) {
   if (rate < 0) return 'rgba(200,200,200,0.15)'; // 未测过：浅灰
-  // rate: 0~1, 0=全错(红), 1=全对(绿)
-  const r = Math.round(200 * (1 - rate) + 33 * rate);
-  const g = Math.round(60 * (1 - rate) + 110 * rate);
-  const b = Math.round(50 * (1 - rate) + 57 * rate);
-  const alpha = 0.25 + rate * 0.7;
-  return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+  const alpha = 0.05 + rate * 0.9;  // 0%→几乎透明, 100%→不透明绿色
+  return `rgba(33,110,57,${alpha.toFixed(3)})`;
 }
 
 /** 渲染词汇正确率地图 Canvas */
