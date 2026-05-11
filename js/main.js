@@ -50,6 +50,18 @@ function init() {
   initTheme();
   registerAudioServiceWorker();
 
+  // 修复 HTML 结构：确保所有 panel 在 container 中，所有 modal 在 body 下
+  const container = document.querySelector('.container');
+  if (container) {
+    document.querySelectorAll('.panel').forEach(p => {
+      if (p.parentElement !== container) container.appendChild(p);
+    });
+  }
+  // 模态框（position:fixed）直接挂到 body 下
+  document.querySelectorAll('.badge-modal').forEach(m => {
+    if (m.parentElement !== document.body) document.body.appendChild(m);
+  });
+
   const count = initWords();
   const subtitle = document.querySelector('.subtitle');
   if (count > 0) {
@@ -60,9 +72,13 @@ function init() {
 
   const settings = loadSettings();
   setMaxUnknownInput(settings.maxUnknown);
+  console.log('init start');
 
-  UI.renderOverallStats(loadHistory());
+  const h0 = loadHistory();
+  console.log('init: history count=', h0?.length);
+  UI.renderOverallStats(h0);
   UI.renderResumeButton(loadSession());
+  UI.renderHomeNotebookSummary(h0);
   UI.renderWordMap();
 
   // 窗口大小变化时重新渲染概率地图和分布图
@@ -117,13 +133,7 @@ window.showPanel = (name) => {
 
   UI.showPanel(name);
   if (name === 'history') {
-    // 确保历史面板在 container 下（修复 HTML 结构错乱导致的历史面板嵌套）
-    const panel = document.getElementById('panel-history');
-    const container = document.querySelector('.container');
-    if (panel && container && panel.parentElement !== container) {
-      container.appendChild(panel);
-    }
-    requestAnimationFrame(() => UI.renderHistory(loadHistory()));
+    UI.renderHistory(loadHistory());
   }
   if (name === 'notebook') {
     UI.renderNotebook(loadHistory());
@@ -583,8 +593,10 @@ function showHashPanel() {
   const params = new URLSearchParams(location.search);
   const hrefPanel = location.href.match(/[?&#]panel=([^&#]+)/)?.[1];
   const name = decodeURIComponent((params.get('panel') || hrefPanel || location.hash.replace('#', '')).trim());
-  if (['home', 'history', 'notebook', 'badges'].includes(name)) {
+  if (['history', 'notebook', 'badges'].includes(name)) {
     window.showPanel(name);
+  } else {
+    window.showPanel('home');
   }
 }
 
