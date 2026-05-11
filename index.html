@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="css/home.css">
 <link rel="stylesheet" href="css/test.css">
 <link rel="stylesheet" href="css/result.css?v=2">
-<link rel="stylesheet" href="css/history.css">
+<link rel="stylesheet" href="css/history.css?v=2">
 <link rel="stylesheet" href="css/notebook.css">
 <link rel="stylesheet" href="css/badges.css?v=3">
 <link rel="stylesheet" href="css/responsive.css?v=2">
@@ -329,7 +329,19 @@
 		        </div>
 		      </div>
 		    </div>
-    <!-- AI 配置弹窗 -->
+    <!-- 历史面板 -->
+  <div class="panel" id="panel-history">
+    <h3 style="margin-bottom:16px">历史记录</h3>
+    <div class="history-list" id="historyList">
+      <p style="color:var(--text-light)">暂无记录</p>
+    </div>
+    <button class="history-scroll-bottom" id="historyScrollBtn" onclick="scrollHistoryBottom()" title="滚动到底部" aria-label="滚动到底部">↓</button>
+    <div class="nav-links" style="margin-top:20px" id="historyNavLinks">
+      <button class="nav-link" onclick="showPanel('home')">返回首页</button>
+      <button class="nav-link" onclick="clearHistory()">清空历史</button>
+    </div>
+  </div>
+  <!-- AI 配置弹窗 -->
   <div class="badge-modal" id="aiConfigModal" hidden>
     <div class="badge-modal-backdrop" onclick="toggleAiConfig()"></div>
     <div class="badge-modal-dialog ai-config-dialog" role="dialog" aria-modal="true" aria-labelledby="aiConfigTitle">
@@ -450,7 +462,7 @@
 
 <script src="data/words_data.js"></script>
 <script src="data/audio_manifest.js"></script>
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=2"></script>
 <!-- AI 详解弹窗 -->
   <div class="badge-modal" id="aiDetailModal" hidden>
     <div class="badge-modal-backdrop" onclick="closeAiDetailModal()"></div>

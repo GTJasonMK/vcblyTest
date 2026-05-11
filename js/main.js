@@ -117,7 +117,13 @@ window.showPanel = (name) => {
 
   UI.showPanel(name);
   if (name === 'history') {
-    UI.renderHistory(loadHistory());
+    // 确保历史面板在 container 下（修复 HTML 结构错乱导致的历史面板嵌套）
+    const panel = document.getElementById('panel-history');
+    const container = document.querySelector('.container');
+    if (panel && container && panel.parentElement !== container) {
+      container.appendChild(panel);
+    }
+    requestAnimationFrame(() => UI.renderHistory(loadHistory()));
   }
   if (name === 'notebook') {
     UI.renderNotebook(loadHistory());

@@ -120,7 +120,7 @@ function generateOptions(correctIdx) {
   }
   const correctOptIdx = options.findIndex(o => o.isCorrect);
 
-  return { options: shuffled, correctOptIdx };
+  return { options, correctOptIdx };
 }
 
 /** 自动保存当前测试进度（快速测试不保存） */

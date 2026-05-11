@@ -231,6 +231,7 @@ let _historyModalList = [];
 
 export function renderHistory(historyList) {
   const listEl = document.getElementById('historyList');
+  if (!listEl) return;
   _historyModalList = Array.isArray(historyList) ? historyList : [];
 
   if (_historyModalList.length === 0) {

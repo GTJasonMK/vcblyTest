@@ -107,7 +107,8 @@ export function renderWordMap() {
       continue;
     }
     const rate = _correctRates[item.idx];
-    const inRange = rate >= _mapRangeMin && rate <= _mapRangeMax;
+    // 未测过的词（rate<0）始终完全可见
+    const inRange = rate < 0 || (rate >= _mapRangeMin && rate <= _mapRangeMax);
     ctx.fillStyle = rateToColor(rate);
     ctx.globalAlpha = inRange ? 1 : 0.12;
     ctx.fillRect(item.x, item.y, cell - MAP_GAP, cell - MAP_GAP);
@@ -251,48 +252,29 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  let _lastTooltipIdx = -1;
-  let _rafPending = false;
   canvas.addEventListener('mousemove', (e) => {
     if (document.hidden) { clearTimeout(hoverAudioTimer); return; }
-    if (_rafPending) return;
-    _rafPending = true;
-    requestAnimationFrame(() => {
-      _rafPending = false;
-      const hit = getMapHit(e);
-      const idx = hit?.idx ?? -1;
+    const hit = getMapHit(e);
 
-      if (idx >= 0 && allWords[idx]) {
-        // 单词未变 → 只更新位置，不重绘 DOM
-        if (idx !== _lastTooltipIdx) {
-          _lastTooltipIdx = idx;
-          const w = allWords[idx];
-          const rate = _correctRates[idx];
-          const pct = rate >= 0 ? (rate * 100).toFixed(1) + '%' : '未测试';
-          tooltip.innerHTML = `
-            <div class="tip-word">${escapeHtml(w.w)}</div>
-            <div class="tip-pron">${w.uk ? '英' + escapeHtml(w.uk) : ''}${w.us ? ' 美' + escapeHtml(w.us) : ''}</div>
-            <div class="tip-def">${escapeHtml(w.d)}</div>
-            <div class="tip-prob">正确率: ${pct}</div>
-          `;
-        }
-        tooltip.style.display = 'block';
-        tooltip.style.transform = `translate(${e.clientX + 14}px, ${e.clientY - 10}px)`;
-        canvas.style.cursor = 'pointer';
-        if (canHoverPrefetch && lastHoverAudioIdx !== idx) {
-          clearTimeout(hoverAudioTimer);
-          hoverAudioTimer = setTimeout(() => {
-            lastHoverAudioIdx = idx;
-            preloadWordAudio(allWords[idx], idx, { priority: 'normal', warmMemory: true, prefetchedOnly: true });
-          }, 150);
-        }
-      } else {
-        _lastTooltipIdx = -1;
-        tooltip.style.display = 'none';
-        canvas.style.cursor = 'crosshair';
+    if (hit && allWords[hit.idx]) {
+      const w = allWords[hit.idx];
+      const rate = _correctRates[hit.idx];
+      const pct = rate >= 0 ? (rate * 100).toFixed(1) + '%' : '未测试';
+      tooltip.innerHTML = `
+        <div class="tip-word">${escapeHtml(w.w)}</div>
+        <div class="tip-pron">${w.uk ? '英' + escapeHtml(w.uk) : ''}${w.us ? ' 美' + escapeHtml(w.us) : ''}</div>
+        <div class="tip-def">${escapeHtml(w.d)}</div>
+        <div class="tip-prob">正确率: ${pct}</div>
+      `;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top = (e.clientY - 10) + 'px';
+      canvas.style.cursor = 'pointer';
+    } else {
+      tooltip.style.display = 'none';
+      canvas.style.cursor = 'crosshair';
       clearTimeout(hoverAudioTimer);
     }
-  });
   });
 
   canvas.addEventListener('click', (e) => {
