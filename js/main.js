@@ -205,7 +205,6 @@ window.openAiDetailModal = async () => {
       { name: 'Similar', key: 'similar', hasBtn: true },
       { name: 'QA', key: 'qa', hasBtn: false },
     ];
-    const { renderMarkdown } = await import('./ai.js');
     // 重置问答 tab
     const qaResult = document.getElementById('aiResultQA');
     if (qaResult) qaResult.textContent = '';
@@ -303,8 +302,7 @@ window.generateAiDetail = async (tab, force = false) => {
       const cacheKey = 'vcbly_ai_' + word.w + '_' + tab;
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
-        const { renderMarkdown } = await import('./ai.js');
-        const data = JSON.parse(cached);
+            const data = JSON.parse(cached);
         if (data.text) {
           if (btn) btn.style.display = 'none';
           resultEl.innerHTML = '<div class="markdown-body">' + renderMarkdown(data.text) + '</div>'
@@ -320,7 +318,6 @@ window.generateAiDetail = async (tab, force = false) => {
   resultEl.innerHTML = '';
 
   try {
-    const { askAi, renderMarkdown } = await import('./ai.js');
     let loaded = false;
     let fullText = '';
     let container = null;
@@ -378,7 +375,6 @@ window.sendAiQuestion = async () => {
   output.scrollTop = output.scrollHeight;
   input.value = '';
   try {
-    const { askAi, renderMarkdown } = await import('./ai.js');
     let full = '';
     const container = document.createElement('div');
     container.className = 'markdown-body';
@@ -567,8 +563,8 @@ window.testAiConfig = async () => {
   if (status) status.textContent = '测试连接中…';
   UI.toast('正在测试 API 连接…');
   try {
-    const ask = (await import('./ai.js')).askAi;
-    await ask('test', {}, 'explain');
+    // ai.js imported at top
+    await askAi('test', {}, 'explain');
     if (status) status.textContent = '连接成功 ✓';
     UI.toast('AI 连接测试成功');
   } catch (e) {

@@ -6,6 +6,7 @@
 import { allWords } from './state.js';
 import { playWordAudio, preloadWordAudio } from './audio.js';
 import { escapeHtml, toast } from './ui-common.js';
+import { startFilteredSession } from './session.js';
 import { positionAchievePanel } from './ui-badges.js';
 
 const MAP_CELL = 8;
@@ -292,6 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
       clearTimeout(hoverAudioTimer);
     }
   });
+  });
 
   canvas.addEventListener('click', (e) => {
     const hit = getMapHit(e);
@@ -348,7 +350,5 @@ window.testMapRange = () => {
     return;
   }
 
-  import('./session.js').then(({ startFilteredSession }) => {
-    startFilteredSession(indices);
-  });
+  startFilteredSession(indices);
 };
