@@ -179,8 +179,10 @@ window.importAll = (event) => {
       const count = importAll(e.target.result);
       UI.toast(`导入成功，共 ${count} 条测试记录`);
       // 刷新首页数据和错词本
-      UI.renderOverallStats(loadHistory());
+      const h2 = loadHistory();
+      UI.renderOverallStats(h2);
       UI.renderResumeButton(loadSession());
+      UI.renderHomeNotebookSummary(h2);
       UI.renderWordMap();
       if (document.getElementById('panel-notebook').classList.contains('active')) {
         UI.renderNotebook(loadHistory());

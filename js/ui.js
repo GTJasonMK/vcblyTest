@@ -186,13 +186,17 @@ export function renderOverallStats(historyList) {
   }
 
   const uniqueWords = new Set();
+  // 累计测词：从 wordStats 统计测试过的不同单词总数（去重）
   let totalTested = 0;
+  try {
+    const stats = JSON.parse(localStorage.getItem('vocab_word_stats') || '{}');
+    totalTested = Object.values(stats).filter(s => s && s.tested > 0).length;
+  } catch {}
   // 今日统计
   let todayTests = 0, todayTested = 0;
   const todayWords = new Set();
 
   historyList.forEach(h => {
-    totalTested += (h.testedCount || 0);
     (h.words || []).forEach(w => uniqueWords.add(w.w));
 
     const hDate = new Date(h.date).toLocaleDateString('zh-CN');

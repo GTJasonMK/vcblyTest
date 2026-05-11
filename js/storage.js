@@ -221,29 +221,20 @@ export function importAll(jsonText) {
     // 兼容旧格式：纯数组（仅历史记录）
     if (Array.isArray(data)) {
       const cleaned = data.map(sanitizeHistoryEntry).filter(Boolean);
-      const merged = [...loadHistory(), ...cleaned];
-      merged.sort((a, b) => new Date(a.date) - new Date(b.date));
-      saveHistory(merged);
-      return merged.length;
+      saveHistory(cleaned);
+      return cleaned.length;
     }
 
-    // 新格式：完整数据对象
+    // 新格式：完整数据对象，直接替换当前数据（不清除会重复）
     if (!data.history || !Array.isArray(data.history)) {
       throw new Error('格式错误：缺少 history 字段');
     }
 
-    // 合并历史记录（清洗后）
-    const existing = loadHistory();
     const cleaned = data.history.map(sanitizeHistoryEntry).filter(Boolean);
-    const merged = [...existing, ...cleaned];
-    merged.sort((a, b) => new Date(a.date) - new Date(b.date));
-    saveHistory(merged);
+    saveHistory(cleaned);
 
-    // 合并词级统计（保留已有，新数据覆盖；清洗形状以避免污染加权抽样）
     if (data.wordStats) {
-      const existingStats = loadWordStats();
-      const mergedStats = { ...existingStats, ...sanitizeWordStats(data.wordStats) };
-      saveWordStats(mergedStats);
+      saveWordStats(sanitizeWordStats(data.wordStats));
     }
 
     // 恢复设置（仅当新数据中存在合法值时）
@@ -274,7 +265,7 @@ export function importAll(jsonText) {
       try { saveAiConfig(data.aiConfig); } catch {}
     }
 
-    return merged.length;
+    return cleaned.length;
   } catch (e) {
     throw new Error(`导入失败：${e.message}`);
   }
