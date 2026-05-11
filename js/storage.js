@@ -44,7 +44,17 @@ export function clearAll() {
   localStorage.removeItem(STORAGE_KEY.HISTORY);
   localStorage.removeItem(STORAGE_KEY.SETTINGS);
   localStorage.removeItem(STORAGE_KEY.WORD_STATS);
+  localStorage.removeItem(STORAGE_KEY.AI_CONFIG);
   clearSession();
+  // 清空 AI 缓存 + 例句缓存
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_'))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {}
 }
 
 // ===== 每词答题统计（加权随机用） =====
@@ -88,15 +98,16 @@ export function saveSession(sessionData) {
     clearSession();
     return;
   }
-  // 只保存必要字段，避免存储过大
+  // 只保存剩余未测部分（cursor 之后），每次省 ~15KB
   const slim = {
-    order: sessionData.order,
-    cursor: sessionData.cursor,
+    order: Array.isArray(sessionData.order) ? sessionData.order.slice(sessionData.cursor) : sessionData.order,
+    cursor: 0,
     todayUnknown: sessionData.todayUnknown,
     testedCount: sessionData.testedCount,
     correctCount: sessionData.correctCount,
     maxUnknown: sessionData.maxUnknown,
     awaitingNext: sessionData.awaitingNext || false,
+    isQuickTest: sessionData.isQuickTest || false,
   };
   localStorage.setItem(STORAGE_KEY.SESSION, JSON.stringify(slim));
 }
@@ -115,22 +126,80 @@ export function clearSession() {
   localStorage.removeItem(STORAGE_KEY.SESSION);
 }
 
+// ===== AI API 配置 =====
+
+export function loadAiConfig() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY.AI_CONFIG)) || {};
+  } catch { return {}; }
+}
+
+export function saveAiConfig(config) {
+  localStorage.setItem(STORAGE_KEY.AI_CONFIG, JSON.stringify(config));
+}
+
 // ===== 全量数据导入导出 =====
+
+/** 校验单条历史记录形状：缺关键字段则丢弃 */
+function sanitizeHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const dateMs = new Date(entry.date).getTime();
+  if (!Number.isFinite(dateMs)) return null;
+  const words = Array.isArray(entry.words)
+    ? entry.words.filter(w => w && typeof w === 'object' && typeof w.w === 'string')
+    : [];
+  const tested = Math.max(0, Math.floor(Number(entry.testedCount) || 0));
+  const correct = Math.max(0, Math.floor(Number(entry.correctCount) || 0));
+  return {
+    date: entry.date,
+    words,
+    testedCount: tested,
+    correctCount: Math.min(correct, tested),
+  };
+}
+
+/** 校验词级统计：剔除 tested/wrong 异常的条目，确保后续加权抽样不退化为 NaN */
+function sanitizeWordStats(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  const cleaned = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (!val || typeof val !== 'object') continue;
+    const tested = Math.max(0, Math.floor(Number(val.tested) || 0));
+    if (tested === 0) continue;
+    const wrongRaw = Math.floor(Number(val.wrong) || 0);
+    const wrong = Math.max(0, Math.min(wrongRaw, tested));
+    cleaned[key] = { tested, wrong };
+  }
+  return cleaned;
+}
 
 /** 导出全量数据为 JSON 文件下载 */
 export function exportAll() {
   const history = loadHistory();
   const wordStats = loadWordStats();
-  if (history.length === 0 && Object.keys(wordStats).length === 0) {
+  // 收集 AI 缓存 + 例句缓存
+  const extraCache = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_'))) {
+        extraCache[key] = localStorage.getItem(key);
+      }
+    }
+  } catch {}
+  if (history.length === 0 && Object.keys(wordStats).length === 0 && Object.keys(extraCache).length === 0) {
     return null;
   }
   const data = {
-    version: 1,
+    version: 3,
     exportedAt: new Date().toISOString(),
     history,
     wordStats,
     settings: loadSettings(),
+    theme: loadTheme(),
+    aiConfig: loadAiConfig(),
   };
+  if (Object.keys(extraCache).length > 0) data.extraCache = extraCache;
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -151,7 +220,8 @@ export function importAll(jsonText) {
 
     // 兼容旧格式：纯数组（仅历史记录）
     if (Array.isArray(data)) {
-      const merged = [...loadHistory(), ...data];
+      const cleaned = data.map(sanitizeHistoryEntry).filter(Boolean);
+      const merged = [...loadHistory(), ...cleaned];
       merged.sort((a, b) => new Date(a.date) - new Date(b.date));
       saveHistory(merged);
       return merged.length;
@@ -162,22 +232,46 @@ export function importAll(jsonText) {
       throw new Error('格式错误：缺少 history 字段');
     }
 
-    // 合并历史记录
+    // 合并历史记录（清洗后）
     const existing = loadHistory();
-    const merged = [...existing, ...data.history];
+    const cleaned = data.history.map(sanitizeHistoryEntry).filter(Boolean);
+    const merged = [...existing, ...cleaned];
     merged.sort((a, b) => new Date(a.date) - new Date(b.date));
     saveHistory(merged);
 
-    // 合并词级统计（保留已有，新数据覆盖）
+    // 合并词级统计（保留已有，新数据覆盖；清洗形状以避免污染加权抽样）
     if (data.wordStats) {
       const existingStats = loadWordStats();
-      const mergedStats = { ...existingStats, ...data.wordStats };
+      const mergedStats = { ...existingStats, ...sanitizeWordStats(data.wordStats) };
       saveWordStats(mergedStats);
     }
 
-    // 恢复设置（仅当新数据中存在时）
-    if (data.settings && data.settings.maxUnknown) {
-      saveSettings(data.settings);
+    // 恢复设置（仅当新数据中存在合法值时）
+    if (data.settings && Number.isFinite(Number(data.settings.maxUnknown))) {
+      const maxUnknown = Math.max(1, Math.floor(Number(data.settings.maxUnknown)));
+      saveSettings({ maxUnknown });
+    }
+
+    // 恢复 AI 缓存 + 例句缓存
+    const cacheData = data.aiCache || data.extraCache;
+    if (cacheData && typeof cacheData === 'object') {
+      try {
+        for (const [key, val] of Object.entries(cacheData)) {
+          if (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_')) {
+            localStorage.setItem(key, val);
+          }
+        }
+      } catch {}
+    }
+
+    // 恢复主题偏好
+    if (data.theme && ['dark', 'light', 'auto'].includes(data.theme)) {
+      saveTheme(data.theme);
+    }
+
+    // 恢复 AI 配置
+    if (data.aiConfig && typeof data.aiConfig === 'object') {
+      try { saveAiConfig(data.aiConfig); } catch {}
     }
 
     return merged.length;

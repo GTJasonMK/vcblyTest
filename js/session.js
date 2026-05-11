@@ -6,12 +6,16 @@ import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clear
 import * as UI from './ui.js';
 import { playWordAudio, preloadWordAudioList } from './audio.js';
 
-/** 计算每词基础权重（基于历史统计） */
-function computeBaseWeight(stats, idx) {
+/** 计算每词基础权重（基于历史统计）
+ *  全对最低 2.5，全错最高 5.0，未测过的新词为 5.0；
+ *  权重越高越容易被抽到。 */
+export function computeBaseWeight(stats, idx) {
   const s = stats[idx];
-  if (!s || s.tested === 0) return 5.0;
-  const wrongRate = s.wrong / s.tested;
-  return 1.5 + wrongRate * 2.5;
+  const tested = Number(s?.tested);
+  if (!Number.isFinite(tested) || tested <= 0) return 5.0;
+  const wrongRaw = Number(s?.wrong);
+  const wrong = Number.isFinite(wrongRaw) ? Math.max(0, Math.min(wrongRaw, tested)) : 0;
+  return 2.5 + (wrong / tested) * 1.5;
 }
 
 /** 获取所有单词的归一化概率（和为1），供可视化使用 */
@@ -22,16 +26,60 @@ export function getWordProbabilities() {
   return weights.map(w => w / total);
 }
 
-/** 加权无放回抽样：key = random^(1/weight)，排序后即为抽样序列 */
+/** 按权重比例无放回抽样（轮盘赌算法 + softmax 放大差距）
+ *  每轮先对剩余词的权重做 softmax(T=0.5)，然后按概率落点。
+ *  优化：merge maxW+exp 为一个循环，局部数组代替属性访问。 */
 function buildWeightedOrder() {
   const stats = loadWordStats();
-  const items = allWords.map((_, i) => {
-    const weight = computeBaseWeight(stats, i);
-    const key = Math.pow(Math.random(), 1.0 / weight);
-    return { idx: i, key };
-  });
-  items.sort((a, b) => b.key - a.key);
-  return items.map(it => it.idx);
+  const pool = allWords.map((_, i) => ({
+    idx: i,
+    weight: computeBaseWeight(stats, i),
+  }));
+
+  const order = [];
+  // 局部数组缓存 exp 值，避免对象属性访问开销
+  const expArr = new Array(pool.length);
+  let len = pool.length;
+
+  while (len > 0) {
+    // 一轮循环完成：找 maxW + 算 exp + 求和
+    let maxW = -Infinity;
+    let expSum = 0;
+    for (let i = 0; i < len; i++) {
+      const w = pool[i].weight;
+      if (w > maxW) maxW = w;
+    }
+    for (let i = 0; i < len; i++) {
+      const e = Math.exp((pool[i].weight - maxW) / 0.5);
+      expArr[i] = e;
+      expSum += e;
+    }
+
+    const rand = Math.random();
+    let acc = 0;
+    let picked = false;
+    for (let i = 0; i < len; i++) {
+      acc += expArr[i] / expSum;
+      if (rand < acc) {
+        order.push(pool[i].idx);
+        // swap-and-pop（O(1) 移除，同时交换 expArr 保持同步）
+        const last = len - 1;
+        if (i !== last) {
+          const tmp = pool[i]; pool[i] = pool[last]; pool[last] = tmp;
+          const etmp = expArr[i]; expArr[i] = expArr[last]; expArr[last] = etmp;
+        }
+        len--;
+        picked = true;
+        break;
+      }
+    }
+    // 浮点安全兜底
+    if (!picked && len > 0) {
+      order.push(pool[len - 1].idx);
+      len--;
+    }
+  }
+  return order;
 }
 
 /** Fisher-Yates洗牌 */
@@ -46,31 +94,45 @@ function shuffle(arr) {
 
 /** 为当前单词生成4个选项（1个正确释义+3个随机错误释义），返回选项数组 */
 function generateOptions(correctIdx) {
-  const correctWord = allWords[correctIdx];
-  const correctDef = correctWord.d;
+  const correctDef = allWords[correctIdx].d;
+  const total = allWords.length;
 
-  // 随机选3个不同的错误单词
-  const pool = [];
-  for (let i = 0; i < allWords.length; i++) {
-    if (i !== correctIdx) pool.push(i);
+  // 拒绝采样：随机抽 3 个不同错误索引（避免 6000 元素 shuffle 的 GC 压力）
+  const wrongIndices = [];
+  const picked = new Set();
+  while (wrongIndices.length < 3) {
+    const r = Math.floor(Math.random() * total);
+    if (r !== correctIdx && !picked.has(r)) {
+      picked.add(r);
+      wrongIndices.push(r);
+    }
   }
-  const wrongIndices = shuffle(pool).slice(0, 3);
 
   const options = [
     { text: correctDef, isCorrect: true },
     ...wrongIndices.map(i => ({ text: allWords[i].d, isCorrect: false })),
   ];
 
-  // 洗牌打乱顺序
-  const shuffled = shuffle(options);
-  const correctOptIdx = shuffled.findIndex(o => o.isCorrect);
+  // Fisher-Yates 洗 4 个选项
+  for (let i = options.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [options[i], options[j]] = [options[j], options[i]];
+  }
+  const correctOptIdx = options.findIndex(o => o.isCorrect);
 
   return { options: shuffled, correctOptIdx };
 }
 
-/** 自动保存当前测试进度 */
+/** 自动保存当前测试进度（快速测试不保存） */
+let _saveTimer = null;
 function autoSave() {
-  saveSession(session);
+  if (session.isQuickTest) return;
+  // 异步延迟写入：连续多次答题只写一次，避免同步 JSON.stringify(30KB) 卡 UI
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    if (session.active) saveSession(session);
+  }, 200);
 }
 
 function preloadTestAudioWindow() {
@@ -124,6 +186,7 @@ export function startFilteredSession(indices) {
   resetSession();
 
   session.active = true;
+  session.isQuickTest = true; // 快速测试，不记入历史
   // 对指定索引做随机洗牌
   session.order = shuffle(indices);
   session.cursor = 0;
@@ -139,6 +202,14 @@ export function resumeSession() {
   const saved = loadSession();
   if (!saved) {
     UI.toast('没有可恢复的测试');
+    return;
+  }
+  // 边界校验：损坏的 saved（order 缺失或 cursor 越界）直接丢弃，避免后续 renderTestWord 卡住。
+  if (!Array.isArray(saved.order) || saved.order.length === 0
+      || !Number.isInteger(saved.cursor) || saved.cursor < 0
+      || saved.cursor >= saved.order.length) {
+    clearSession();
+    UI.toast('保存的测试数据已损坏，已清除');
     return;
   }
   restoreSession(saved);
@@ -213,8 +284,8 @@ export function markUnknown() {
     });
   }
 
-  // 记录词级统计
-  recordWordResult(wordIdx, false);
+  // 记录词级统计（快速测试不记录）
+  if (!session.isQuickTest) recordWordResult(wordIdx, false);
 
   // 高亮正确选项，帮助学习
   UI.showAnswerFeedback(-1, session.correctIdx);
@@ -232,14 +303,16 @@ export function markUnknown() {
 /** 用户选择答案 */
 export function selectAnswer(optIdx) {
   if (!session.active || session.answered) return;
+  // 防御：恢复未完成测试时 options 可能尚未生成，键盘 1-4 走到这里要直接忽略。
+  if (!Array.isArray(session.options) || !session.options[optIdx]) return;
   session.answered = true;
   session.testedCount++;
 
   const wordIdx = getCurrentWordIndex();
   const isCorrect = session.options[optIdx].isCorrect;
 
-  // 记录词级统计
-  recordWordResult(wordIdx, isCorrect);
+  // 记录词级统计（快速测试不记录）
+  if (!session.isQuickTest) recordWordResult(wordIdx, isCorrect);
 
   UI.showAnswerFeedback(optIdx, session.correctIdx);
 
@@ -278,6 +351,11 @@ export function selectAnswer(optIdx) {
 /** 进入下一个单词 */
 export function nextWord() {
   if (!session.active) return;
+  // 已达上限则直接结束，避免下一题闪现
+  if (session.todayUnknown.length >= session.maxUnknown) {
+    endSession();
+    return;
+  }
   session.awaitingNext = false;
   session.cursor++;
   autoSave();
@@ -303,17 +381,21 @@ function advanceOrReshuffle() {
 /** 结束本次测试 */
 export function endSession() {
   if (!session.active) return;
+  const isQuick = session.isQuickTest;
   session.active = false;
-  clearSession(); // 测试结束，清除进度
+  clearSession();
 
-  const history = loadHistory();
-  history.push({
-    date: new Date().toISOString(),
-    words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
-    testedCount: session.testedCount,
-    correctCount: session.correctCount,
-  });
-  saveHistory(history);
+  // 快速测试不记入历史，但仍显示结果
+  if (!isQuick) {
+    const history = loadHistory();
+    history.push({
+      date: new Date().toISOString(),
+      words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
+      testedCount: session.testedCount,
+      correctCount: session.correctCount,
+    });
+    saveHistory(history);
+  }
 
   UI.showPanel('result');
   UI.renderResult();
@@ -322,19 +404,23 @@ export function endSession() {
 /** 提前结束 */
 export function endSessionEarly() {
   if (!session.active) return;
-  if (!confirm('确定要提前结束本次测试吗？当前不会单词将记入本次结果。')) return;
+  const qmsg = session.isQuickTest ? '确定要提前结束本次快速测试吗？' : '确定要提前结束本次测试吗？当前不会单词将记入本次结果。';
+  if (!confirm(qmsg)) return;
 
+  const isQuick = session.isQuickTest;
   session.active = false;
-  clearSession(); // 测试结束，清除进度
+  clearSession();
 
-  const history = loadHistory();
-  history.push({
-    date: new Date().toISOString(),
-    words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
-    testedCount: session.testedCount,
-    correctCount: session.correctCount,
-  });
-  saveHistory(history);
+  if (!isQuick) {
+    const history = loadHistory();
+    history.push({
+      date: new Date().toISOString(),
+      words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
+      testedCount: session.testedCount,
+      correctCount: session.correctCount,
+    });
+    saveHistory(history);
+  }
 
   UI.showPanel('result');
   UI.renderResult();
@@ -387,4 +473,14 @@ export function playReviewWordAudio() {
   if (!playWordAudio(word, word.idx, button)) {
     UI.toast('当前单词暂无音频');
   }
+}
+
+/** 获取当前复习单词的信息 */
+export function getCurrentReviewWord() {
+  return session.todayUnknown[reviewIndex] || null;
+}
+
+/** 获取当前复习索引 */
+export function getReviewIndex() {
+  return reviewIndex;
 }

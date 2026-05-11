@@ -17,6 +17,7 @@ export const STORAGE_KEY = {
   THEME: 'vocab_theme',
   SESSION: 'vocab_session',   // 未完成的测试状态
   WORD_STATS: 'vocab_word_stats', // 每词答题统计
+  AI_CONFIG: 'vocab_ai_config', // AI API 配置
 };
 
 // 默认设置

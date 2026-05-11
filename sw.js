@@ -85,7 +85,11 @@ async function handleAudioRequest(request) {
 
   let cached = await cache.match(url);
   if (!cached) {
-    const response = rangeHeader ? await fetchFullAudio(url) : await fetch(request);
+    let response = rangeHeader ? await fetchFullAudio(url) : await fetch(request);
+    // 非 200（如 304 force-cache 命中但浏览器仍返回空）时跳过浏览器缓存重新拉取一次。
+    if (!response || !response.ok || response.status !== 200) {
+      response = await fetch(url, { cache: 'reload' });
+    }
     if (!response || !response.ok) return response;
 
     if (response.status === 200) {

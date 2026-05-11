@@ -162,7 +162,7 @@ async function openAudioCache() {
   return caches.open(getCacheName());
 }
 
-async function trimPersistentCache() {
+async function _trimPersistentCacheImpl() {
   const cache = await openAudioCache();
   if (!cache) return;
 
@@ -185,6 +185,14 @@ async function trimPersistentCache() {
     total -= entry.size || 0;
   }
   saveMeta(meta);
+}
+
+// 串行化 trim：并发 cacheAudioNow 同时进入会让 META 与持久 cache 漂移
+// （多份 trim 各自读 meta、删条目、写 meta，最后写入覆盖前者的删除视图）。
+let trimChain = Promise.resolve();
+function trimPersistentCache() {
+  trimChain = trimChain.catch(() => {}).then(_trimPersistentCacheImpl);
+  return trimChain;
 }
 
 function recentlyFailed(path) {
@@ -211,10 +219,13 @@ async function cacheAudioNow(path, options = {}) {
   if (options.warmMemory || !size) {
     const blob = await response.clone().blob();
     size = blob.size || size;
+    // blob 读取期间用户可能点了"清理音频缓存"，再次校验避免回写已被清空的缓存。
+    if (options.epoch !== cacheEpoch) return false;
     if (options.warmMemory) putMemory(path, blob);
   }
 
   if (cache && !fromPersistentCache) {
+    if (options.epoch !== cacheEpoch) return false;
     await cache.put(path, response.clone());
   }
 

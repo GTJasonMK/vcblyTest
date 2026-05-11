@@ -1,0 +1,146 @@
+/* ========== 历史面板 + 历史详情模态 ========== */
+
+#panel-history.active {
+  overflow-y: auto;
+}
+#panel-history .history-list { max-height: none; }
+
+.history-list { text-align: left; }
+.history-item {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  background: var(--card-bg);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  appearance: none;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.history-item:hover { background: var(--bg); border-color: var(--accent); }
+.history-item .h-date {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.history-item .h-count {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.history-item .h-open {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.history-modal-dialog {
+  width: min(720px, calc(100vw - 48px));
+  text-align: left;
+}
+.history-modal-summary {
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+}
+.history-modal-date {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+.history-modal-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.history-modal-stats span {
+  min-width: 0;
+  padding: 8px 6px;
+  color: var(--text-light);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+.history-modal-words {
+  display: flex;
+  max-height: min(520px, 58dvh);
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.history-word-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+}
+.history-word-main {
+  flex: 1;
+  min-width: 0;
+}
+.history-word-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.98rem;
+}
+.history-word-main span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-light);
+  font-size: 0.75rem;
+}
+.history-word-def {
+  margin-top: 6px;
+  color: var(--text-light);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.history-modal-empty {
+  margin: 8px 0;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ---- 历史面板：下滑到底部按钮 ---- */
+.history-scroll-bottom {
+  position: fixed;
+  bottom: 90px;
+  right: 30px;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  background: var(--card-bg);
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: all var(--ease);
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.history-scroll-bottom:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+#panel-history.active .history-scroll-bottom { display: flex; }

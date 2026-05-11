@@ -4,7 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>考研词汇随机测试</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/buttons.css">
+<link rel="stylesheet" href="css/home.css">
+<link rel="stylesheet" href="css/test.css">
+<link rel="stylesheet" href="css/result.css?v=2">
+<link rel="stylesheet" href="css/history.css">
+<link rel="stylesheet" href="css/notebook.css">
+<link rel="stylesheet" href="css/badges.css?v=3">
+<link rel="stylesheet" href="css/responsive.css?v=2">
 </head>
 <body>
 
@@ -116,6 +124,8 @@
       <button class="nav-link" onclick="document.getElementById('importFile').click()">导入数据</button>
       <input type="file" id="importFile" accept=".json" style="display:none">
       <span class="nav-divider">·</span>
+      <button class="nav-link" onclick="toggleAiConfig()">AI 设置</button>
+      <span class="nav-divider">·</span>
       <button class="nav-link" onclick="clearAudioCache()">清理音频缓存</button>
       <span class="nav-divider">·</span>
       <button class="nav-link" onclick="resetAll()">重置数据</button>
@@ -126,23 +136,23 @@
     <!-- 词汇概率地图 -->
     <div class="home-map" id="homeMap">
       <div class="home-map-header">
-        <span class="home-map-title">📊 词汇概率地图</span>
+        <span class="home-map-title">📊 词汇掌握度地图</span>
         <div class="nb-map-controls">
-          <label class="nb-map-label">概率范围筛选</label>
+          <label class="nb-map-label">正确率范围筛选</label>
           <div class="nb-map-range">
             <input type="number" id="mapProbMin" value="0" min="0" max="100" step="1" class="nb-map-input">
             <span class="nb-map-sep">–</span>
             <input type="number" id="mapProbMax" value="5" min="0" max="100" step="1" class="nb-map-input">
-            <span class="nb-map-unit">‱</span>
+            <span class="nb-map-unit">%</span>
             <button class="btn btn-accent btn-sm" onclick="testMapRange()">测这些词</button>
           </div>
         </div>
         <span class="nb-map-info" id="mapRangeInfo"></span>
       </div>
       <div class="nb-map-legend">
-        <span>低概率·已掌握</span>
+        <span>已掌握 · 正确率高</span>
         <span class="nb-map-gradient"></span>
-        <span>高概率·待复习</span>
+        <span>待复习 · 正确率低</span>
       </div>
       <canvas id="nbWordMap" class="nb-word-map-canvas"></canvas>
       <div class="nb-map-tooltip" id="mapTooltip" style="display:none"></div>
@@ -261,7 +271,15 @@
       <span class="review-index" id="reviewIndex">1 / 1</span>
       <button class="nav-btn" onclick="reviewNext()">▶</button>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="showPanel('result')">返回本次结果</button>
+    <div class="review-tools">
+      <button class="review-tool-btn" onclick="openAiDetailModal()" title="AI 详解">🤖</button>
+      <button class="review-tool-btn" id="reviewExampleBtn" onclick="fetchAndShowExample()" title="查例句">📖</button>
+    </div>
+    <!-- 例句输出区 -->
+    <div class="review-ai-section" id="reviewExampleSection" style="display:none">
+      <div class="review-ai-output" id="reviewExampleOutput"></div>
+    </div>
+    <button class="btn btn-secondary btn-sm" id="reviewBackBtn" onclick="reviewBack()">返回本次结果</button>
   </div>
 
       <!-- 错词本面板 -->
@@ -300,6 +318,8 @@
 			      <!-- 顶栏：测试次数选择 -->
 			      <div class="nb-session-tabs" id="nbSessionTabs"></div>
 			      <!-- 下方：左右分栏 -->
+			      <!-- 操作按钮行 -->
+			      <div class="nb-review-actions" id="nbReviewActions" style="display:none"></div>
 		      <div class="nb-review-split" id="nbReviewSplit">
 		        <div class="nb-review-left" id="nbReviewLeft">
 		          <p class="nb-empty-hint">点击日历中的日期查看详情</p>
@@ -309,6 +329,34 @@
 		        </div>
 		      </div>
 		    </div>
+    <!-- AI 配置弹窗 -->
+  <div class="badge-modal" id="aiConfigModal" hidden>
+    <div class="badge-modal-backdrop" onclick="toggleAiConfig()"></div>
+    <div class="badge-modal-dialog ai-config-dialog" role="dialog" aria-modal="true" aria-labelledby="aiConfigTitle">
+      <div class="badge-topbar">
+        <button class="nav-link" onclick="toggleAiConfig()">关闭</button>
+        <h3 id="aiConfigTitle" style="margin:0">🤖 AI 大模型配置</h3>
+      </div>
+      <div class="ai-config-body">
+        <div class="ai-config-row">
+          <label>API Endpoint</label>
+          <input type="text" id="aiEndpoint" placeholder="https://api.deepseek.com/v1/chat/completions">
+        </div>
+        <div class="ai-config-row">
+          <label>API Key</label>
+          <input type="password" id="aiApiKey" placeholder="sk-...">
+        </div>
+        <div class="ai-config-row">
+          <label>模型名</label>
+          <input type="text" id="aiModel" placeholder="deepseek-v4-flash">
+        </div>
+        <div class="ai-config-actions">
+          <button class="btn btn-accent btn-sm" onclick="saveAiConfigForm()">保存配置</button>
+          <button class="btn btn-secondary btn-sm" onclick="testAiConfig()">测试连接</button>
+        </div>
+        <div id="aiConfigStatus" style="font-size:0.78rem;color:var(--text-muted);margin-top:10px;text-align:center"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 徽章馆弹窗 -->
@@ -366,7 +414,8 @@
     <div class="history-list" id="historyList">
       <p style="color:var(--text-light)">暂无记录</p>
     </div>
-    <div class="nav-links" style="margin-top:20px">
+    <button class="history-scroll-bottom" id="historyScrollBtn" onclick="scrollHistoryBottom()" title="滚动到底部" aria-label="滚动到底部">↓</button>
+    <div class="nav-links" style="margin-top:20px" id="historyNavLinks">
       <button class="nav-link" onclick="showPanel('home')">返回首页</button>
       <button class="nav-link" onclick="clearHistory()">清空历史</button>
     </div>
@@ -402,5 +451,43 @@
 <script src="data/words_data.js"></script>
 <script src="data/audio_manifest.js"></script>
 <script type="module" src="js/main.js"></script>
+<!-- AI 详解弹窗 -->
+  <div class="badge-modal" id="aiDetailModal" hidden>
+    <div class="badge-modal-backdrop" onclick="closeAiDetailModal()"></div>
+    <div class="badge-modal-dialog ai-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="aiDetailTitle">
+      <div class="badge-topbar">
+        <button class="nav-link" onclick="closeAiDetailModal()">关闭</button>
+        <h3 id="aiDetailTitle" style="margin:0">🤖 AI 单词详解</h3>
+      </div>
+      <div class="ai-detail-word-info" id="aiDetailWordInfo"></div>
+      <div class="ai-detail-tabs">
+        <button class="ai-detail-tab active" id="aiTabMnemonic" onclick="switchAiDetailTab('mnemonic')">助记法</button>
+        <button class="ai-detail-tab" id="aiTabCollocation" onclick="switchAiDetailTab('collocation')">常用搭配</button>
+        <button class="ai-detail-tab" id="aiTabSimilar" onclick="switchAiDetailTab('similar')">相似词区分</button>
+        <button class="ai-detail-tab" id="aiTabQA" onclick="switchAiDetailTab('qa')">❓ 问答</button>
+      </div>
+      <div class="ai-detail-body">
+        <div class="ai-detail-tab-content active" id="aiDetailMnemonic">
+          <button class="btn btn-accent btn-sm ai-gen-btn" id="aiBtnMnemonic" onclick="generateAiDetail('mnemonic')" data-text="✨ 生成助记法">✨ 生成助记法</button>
+          <div class="ai-detail-result markdown-body" id="aiResultMnemonic"></div>
+        </div>
+        <div class="ai-detail-tab-content" id="aiDetailCollocation" style="display:none">
+          <button class="btn btn-accent btn-sm ai-gen-btn" id="aiBtnCollocation" onclick="generateAiDetail('collocation')" data-text="✨ 生成常用搭配">✨ 生成常用搭配</button>
+          <div class="ai-detail-result markdown-body" id="aiResultCollocation"></div>
+        </div>
+        <div class="ai-detail-tab-content" id="aiDetailSimilar" style="display:none">
+          <button class="btn btn-accent btn-sm ai-gen-btn" id="aiBtnSimilar" onclick="generateAiDetail('similar')" data-text="✨ 生成相似词区分">✨ 生成相似词区分</button>
+          <div class="ai-detail-result markdown-body" id="aiResultSimilar"></div>
+        </div>
+        <div class="ai-detail-tab-content" id="aiDetailQA" style="display:none">
+          <div class="ai-detail-result markdown-body" id="aiResultQA" style="min-height:80px"></div>
+          <div class="review-ai-input-row" style="display:flex;gap:8px;margin-top:8px">
+            <input type="text" id="aiQAInput" placeholder="输入关于这个单词的问题…" class="review-ai-input" onkeydown="if(event.key==='Enter')sendAiQuestion()">
+            <button class="btn btn-accent btn-sm" onclick="sendAiQuestion()">发送</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

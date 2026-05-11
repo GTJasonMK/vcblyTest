@@ -1,0 +1,250 @@
+/* ========== 响应式覆盖 ========== */
+/* 最后加载；所有 @media 规则集中于此以维护级联顺序 */
+
+/* ---- 平板及以上 (≥768px) ---- */
+@media (min-width: 768px) {
+  .container { max-width: 92vw; padding: 16px 20px 24px; }
+
+  .test-body {
+    flex-direction: row;
+    align-items: center;
+    gap: 32px;
+  }
+  .test-left {
+    flex: 0 0 42%;
+    gap: 12px;
+  }
+  .test-right {
+    flex: 1;
+  }
+  #panel-test .word-card-large { max-width: none; }
+  #panel-test .word-card-large .word-display { font-size: 2rem; }
+  .options-grid { gap: 10px; }
+  .option-btn { padding: 14px 16px; font-size: 0.92rem; }
+}
+
+/* ---- 桌面端 (≥1024px) ---- */
+@media (min-width: 1024px) {
+  .container { max-width: 92vw; padding: 20px 28px 32px; }
+  .home-cards { gap: 20px; }
+  .test-body { gap: 40px; }
+  .test-left { flex: 0 0 40%; }
+  #panel-test .word-card-large .word-display { font-size: 2.4rem; }
+  .option-btn { padding: 16px 18px; font-size: 0.98rem; }
+  .options-grid { gap: 12px; }
+
+  .word-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .word-list-item { border-right: 1px solid var(--border-light); }
+  #panel-result .word-list { display: block; }
+  #panel-result .word-list-item { border-right: none; }
+
+  .history-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+
+/* ---- 移动端 (<600px) ---- */
+@media (max-width: 600px) {
+  .container { padding: 8px 8px 16px; }
+  .panel { padding: 12px 10px; border-radius: var(--radius); }
+
+  .home-cards { grid-template-columns: 1fr; gap: 8px; }
+  .home-card { padding: 12px 10px; }
+  .nb-dist-chart { position: static; width: 100%; height: 120px; margin-top: 12px; }
+  .nb-achieve-panel { position: static; width: 100%; margin-top: 12px; }
+  .word-display { font-size: 1.6rem; }
+  .word-card-large { padding: 12px 10px; }
+  .word-card-large .word-display { font-size: 1.5rem; }
+
+  .btn { padding: 8px 16px; font-size: 0.85rem; }
+  .btn-lg { padding: 10px 24px; }
+  .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+  .stats-bar { gap: 3px; }
+  .stat-chip { padding: 8px 3px; }
+  .stat-chip .sc-val { font-size: 1.1rem; }
+  .result-stats { gap: 16px; }
+  .badge-hero { padding: 12px; }
+  .badge-hero-title { font-size: 1.2rem; }
+  .badge-summary-grid { grid-template-columns: 1fr; }
+  .badge-grid { grid-template-columns: 1fr; }
+  .badge-tier-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .badge-modal { padding: 8px; }
+  .badge-modal-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 10px;
+  }
+  .history-modal-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 10px;
+  }
+  .history-modal-summary { padding: 10px; }
+  .history-modal-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .history-modal-stats span { padding: 7px 5px; font-size: 0.72rem; }
+  .history-modal-words { max-height: 54dvh; }
+  .history-word-item { padding: 9px 10px; }
+  .history-word-main strong { font-size: 0.92rem; }
+  .history-word-main span,
+  .history-word-def { font-size: 0.72rem; }
+
+  .title-badge-card,
+  .metric-badge-card { min-height: 0; padding: 8px 6px 6px; }
+  .title-progress { width: 78%; }
+  .achieve-item { min-height: 32px; }
+
+  #panel-result.active {
+    width: min(100%, 520px);
+    max-height: calc(100dvh - 24px);
+    padding: 18px 14px 16px;
+  }
+  #panel-result .word-list { max-height: 34dvh; }
+
+  #panel-review.active {
+    width: min(100%, 500px);
+    max-height: calc(100dvh - 24px);
+    padding: 18px 14px 16px;
+  }
+  #panel-review .word-display { font-size: 1.55rem; }
+  #panel-review .def-reveal { max-height: 34dvh; }
+  .review-tools { top: 40px; right: 8px; gap: 4px; }
+  .review-tool-btn { width: 30px; height: 30px; font-size: 0.9rem; }
+  .review-ai-input-row { flex-direction: column; gap: 6px; }
+  .review-ai-input { width: 100%; }
+  .stat-num { font-size: 1.6rem; }
+  .theme-toggle { bottom: 12px; right: 12px; width: 34px; height: 34px; }
+  .option-btn { padding: 9px 10px; font-size: 0.82rem; }
+  .key-hints-inline { font-size: 0.62rem; }
+  .test-meta-top { font-size: 0.7rem; }
+  .test-meta-bottom .progress-text { font-size: 0.62rem; }
+
+  #panel-notebook.active {
+    overflow-y: auto;
+    padding: 10px 8px 14px;
+  }
+  #panel-notebook .nb-topbar { margin-bottom: 8px; }
+  .nb-topbar h3 { font-size: 0.92rem; }
+  .nb-summary-item { padding: 0 10px; }
+  .nb-card {
+    margin-bottom: 8px;
+    border-radius: var(--radius);
+  }
+  .nb-card-header {
+    align-items: flex-start;
+    gap: 4px;
+    padding: 7px 9px;
+  }
+  .nb-card-title { font-size: 0.78rem; line-height: 1.35; text-align: left; }
+  .nb-card-sub { font-size: 0.66rem; }
+  #nbCardTop { flex: 0 0 auto; min-height: 292px; }
+  #nbTabContentCal { min-height: 232px; overflow: visible; }
+  #nbTabContentCal .nb-calendar { min-height: 232px; }
+  #nbCardTop .nb-card-header { flex-direction: column; }
+  #nbCardTop .nb-tabs { width: 100%; }
+  #nbCardTop .nb-tab {
+    flex: 1 1 0;
+    padding: 6px 5px;
+    font-size: 0.72rem;
+    text-align: center;
+  }
+  .nb-calendar { padding: 7px 6px; }
+  .cal-title { font-size: 0.78rem; }
+  .cal-nav { width: 24px; height: 24px; }
+  .cal-grid { gap: 2px; }
+  .cal-cell { min-height: 24px; padding: 1px; }
+  .cal-cell .cal-day { font-size: 0.74rem; }
+  .cal-cell.has-sessions .cal-stats { display: none; }
+  .cal-cell.has-sessions::after {
+    content: '';
+    width: 4px;
+    height: 4px;
+    margin-top: 2px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.65;
+  }
+  .nb-chart-wrap { padding: 8px; }
+  #nbCardReview { flex: 0 0 auto; min-height: 390px; }
+  .nb-session-tabs { gap: 5px; padding: 6px; }
+  .nb-session-tab { font-size: 0.68rem; padding: 5px 8px; }
+  .nb-review-split {
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+  }
+  .nb-review-left {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 138px;
+    min-height: 72px;
+    padding: 2px 0;
+  }
+  .nb-review-right {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 190px;
+    max-height: 38dvh;
+    padding: 10px;
+  }
+  .nb-review-word { padding: 7px 8px; gap: 6px; font-size: 0.76rem; }
+  .nb-review-word .rw-pron { max-width: 42%; font-size: 0.62rem; }
+  .rw-detail-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .rw-detail-main { flex: 1 1 auto; min-width: 0; text-align: left; }
+  .rw-detail-audio { display: none; }
+  .nb-mobile-gamepad { display: block; width: 52px; height: 52px; }
+  .rw-detail-head { justify-content: flex-start; margin-bottom: 4px; }
+  .rw-detail-word { font-size: 1.32rem; line-height: 1.2; }
+  .rw-detail-pron { margin-bottom: 0; font-size: 0.76rem; text-align: left; }
+  .rw-detail-def { font-size: 0.84rem; line-height: 1.55; text-align: left; }
+  .nb-empty-hint { padding: 12px 8px; font-size: 0.72rem; }
+
+  /* ---- AI 弹窗移动端 ---- */
+  .ai-detail-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ai-detail-tab { flex: 0 0 auto; padding: 8px 10px; font-size: 0.78rem; }
+  .ai-detail-dialog { width: calc(100vw - 16px) !important; max-height: calc(100dvh - 16px); padding: 10px; }
+  .ai-detail-word-info { font-size: 0.75rem; word-break: break-all; }
+  .ai-config-dialog { width: calc(100vw - 16px) !important; }
+  .ai-config-row { flex-direction: column; align-items: stretch; gap: 4px; }
+  .ai-config-row label { flex: none; font-size: 0.75rem; }
+
+  /* ---- 错词本操作按钮行 ---- */
+  .nb-review-actions { flex-direction: column; gap: 6px; padding: 6px 10px; }
+  .nb-review-actions .btn { font-size: 0.78rem; padding: 7px 10px; }
+
+  /* ---- 词汇地图控件 ---- */
+  .nb-map-controls { gap: 4px; }
+  .nb-map-input { width: 48px; font-size: 0.68rem; padding: 2px 4px; }
+  .nb-map-label { font-size: 0.66rem; }
+  .nb-map-info { font-size: 0.6rem; }
+
+  /* ---- 例句输出 ---- */
+  .review-ai-output { font-size: 0.8rem; max-height: 50dvh; }
+  .review-ai-output table { font-size: 0.72rem; }
+  .review-ai-output pre { font-size: 0.72rem; }
+
+  /* ---- 测试面板移动端紧凑 ---- */
+  .test-meta-top { flex-wrap: wrap; gap: 6px; }
+}
+
+@media (max-width: 380px) {
+  .home-cards { grid-template-columns: 1fr; }
+  .stats-bar { grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .result-stats { gap: 12px; }
+}

@@ -34,6 +34,7 @@ export function createEmptySession() {
     answered: false,    // 当前题是否已作答
     correctIdx: -1,     // 当前题正确答案的选项索引
     awaitingNext: false, // 答错后等待点击"下一个"
+    isQuickTest: false,  // 快速测试（不计入历史记录）
   };
 }
 
@@ -54,6 +55,10 @@ export function restoreSession(saved) {
   session.correctCount = saved.correctCount || 0;
   session.maxUnknown = saved.maxUnknown;
   session.awaitingNext = saved.awaitingNext || false;
+  session.isQuickTest = saved.isQuickTest || false;
+  // awaitingNext=true 表示恢复点是"已答错待下一题"，必须保持已作答态，
+  // 防止键盘 1-4 在没有 options 数据的情况下再触发 selectAnswer。
+  if (session.awaitingNext) session.answered = true;
 }
 
 /** 更新设置并同步到session */
