@@ -187,17 +187,19 @@ export function exportAll() {
       }
     }
   } catch {}
-  if (history.length === 0 && Object.keys(wordStats).length === 0 && Object.keys(extraCache).length === 0) {
+  const session = loadSession();
+  if (history.length === 0 && Object.keys(wordStats).length === 0 && Object.keys(extraCache).length === 0 && !session) {
     return null;
   }
   const data = {
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     history,
     wordStats,
     settings: loadSettings(),
     theme: loadTheme(),
     aiConfig: loadAiConfig(),
+    session,
   };
   if (Object.keys(extraCache).length > 0) data.extraCache = extraCache;
   const json = JSON.stringify(data, null, 2);
@@ -263,6 +265,13 @@ export function importAll(jsonText) {
     // 恢复 AI 配置
     if (data.aiConfig && typeof data.aiConfig === 'object') {
       try { saveAiConfig(data.aiConfig); } catch {}
+    }
+
+    // 恢复未完成的测试（先清除再写入，避免残留）
+    clearSession();
+    if (data.session && typeof data.session === 'object'
+        && Array.isArray(data.session.order) && data.session.order.length > 0) {
+      try { localStorage.setItem(STORAGE_KEY.SESSION, JSON.stringify(data.session)); } catch {}
     }
 
     return cleaned.length;

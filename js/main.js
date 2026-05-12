@@ -112,6 +112,7 @@ window.startReview = () => {
 };
 window.reviewPrev = () => Session.reviewPrev();
 window.reviewNext = () => Session.reviewNext();
+window.reviewJumpTo = (n) => Session.reviewJumpTo(n);
 window.playReviewWordAudio = () => Session.playReviewWordAudio();
 window.reviewBack = () => showPanel('result'); // 默认返回结果，被 reviewFromNotebook 覆盖
 window.playWordAudioFromButton = (button) => {
@@ -639,10 +640,19 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // 复习模式：左右翻页
+  // 复习模式：左右翻页、g 键聚焦跳转
   if (reviewPanel && reviewPanel.classList.contains('active')) {
     if (e.key === 'ArrowLeft' || e.key === 'a') Session.reviewPrev();
     if (e.key === 'ArrowRight' || e.key === 'd') Session.reviewNext();
+    if (e.key === 'g' && !isEditableTarget(e.target)) {
+      e.preventDefault();
+      const inp = document.getElementById('reviewJumpInput');
+      if (inp) { inp.focus(); inp.select(); }
+    }
+    if (e.key === 'Escape') {
+      const inp = document.getElementById('reviewJumpInput');
+      if (inp) inp.blur();
+    }
     return;
   }
 

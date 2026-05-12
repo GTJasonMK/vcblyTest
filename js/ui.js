@@ -341,7 +341,12 @@ export function renderReviewWord(index, total) {
   document.getElementById('reviewPronUk').textContent = w.uk ? `英 ${w.uk}` : '';
   document.getElementById('reviewPronUs').textContent = w.us ? `美 ${w.us}` : '';
   document.getElementById('reviewDef').textContent = w.d;
-  document.getElementById('reviewIndex').textContent = `${index + 1} / ${total}`;
+  const jumpInput = document.getElementById('reviewJumpInput');
+  if (jumpInput) {
+    jumpInput.value = index + 1;
+    jumpInput.max = total;
+  }
+  document.getElementById('reviewTotal').textContent = `/ ${total}`;
   // 根据来源更新返回按钮
   const backBtn = document.getElementById('reviewBackBtn');
   if (backBtn) {

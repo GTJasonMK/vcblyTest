@@ -259,4 +259,24 @@
   color: var(--text-light);
   min-width: 56px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.review-jump-input {
+  width: 36px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  text-align: center;
+  font-family: inherit;
+  -moz-appearance: textfield;
+}
+.review-jump-input::-webkit-inner-spin-button,
+.review-jump-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

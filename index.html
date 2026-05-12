@@ -268,7 +268,10 @@
     </div>
     <div class="review-nav">
       <button class="nav-btn" onclick="reviewPrev()">◀</button>
-      <span class="review-index" id="reviewIndex">1 / 1</span>
+      <span class="review-index">
+        <input type="number" class="review-jump-input" id="reviewJumpInput" min="1" title="输入序号回车跳转" onkeydown="if(event.key==='Enter')reviewJumpTo(parseInt(this.value))">
+        <span id="reviewTotal">/ 1</span>
+      </span>
       <button class="nav-btn" onclick="reviewNext()">▶</button>
     </div>
     <div class="review-tools">

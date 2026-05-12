@@ -475,6 +475,17 @@ export function playReviewWordAudio() {
   }
 }
 
+/** 跳转到复习列表中的指定位置（1-based） */
+export function reviewJumpTo(n) {
+  const total = session.todayUnknown.length;
+  if (total === 0) return;
+  const target = Math.max(1, Math.min(total, Math.floor(Number(n)) || 1)) - 1;
+  if (target === reviewIndex) return;
+  reviewIndex = target;
+  UI.renderReviewWord(reviewIndex, total);
+  preloadReviewAudioWindow();
+}
+
 /** 获取当前复习单词的信息 */
 export function getCurrentReviewWord() {
   return session.todayUnknown[reviewIndex] || null;

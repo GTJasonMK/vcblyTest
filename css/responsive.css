@@ -119,6 +119,8 @@
   #panel-review .def-reveal { max-height: 34dvh; }
   .review-tools { top: 40px; right: 8px; gap: 4px; }
   .review-tool-btn { width: 30px; height: 30px; font-size: 0.9rem; }
+  .review-jump-input { width: 44px; font-size: 0.9rem; padding: 4px 6px; }
+  .review-index { font-size: 0.85rem; }
   .review-ai-input-row { flex-direction: column; gap: 6px; }
   .review-ai-input { width: 100%; }
   .stat-num { font-size: 1.6rem; }
