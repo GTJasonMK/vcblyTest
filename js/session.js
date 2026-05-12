@@ -7,7 +7,8 @@ import * as UI from './ui.js';
 import { playWordAudio, preloadWordAudioList } from './audio.js';
 
 /** 计算每词基础权重（基于历史统计）
- *  全对最低 2.5，全错最高 5.0，未测过的新词为 5.0；
+ *  公式：2.5 + (wrong / tested) * 1.5
+ *  → 全对最低 2.5，全错最高 4.0，未测过的新词为 5.0（最优先抽中）；
  *  权重越高越容易被抽到。 */
 export function computeBaseWeight(stats, idx) {
   const s = stats[idx];
@@ -97,13 +98,26 @@ function generateOptions(correctIdx) {
   const correctDef = allWords[correctIdx].d;
   const total = allWords.length;
 
-  // 拒绝采样：随机抽 3 个不同错误索引（避免 6000 元素 shuffle 的 GC 压力）
+  // 拒绝采样：随机抽 3 个错误索引（避免 6000 元素 shuffle 的 GC 压力）。
+  // 同时按释义文本去重，避免词库中存在同义/同译条目导致 4 个选项里出现重复文本。
   const wrongIndices = [];
-  const picked = new Set();
+  const pickedIdx = new Set();
+  const seenDef = new Set([correctDef]);
+  let safety = total * 4; // 防御：极端数据下避免死循环
+  while (wrongIndices.length < 3 && safety-- > 0) {
+    const r = Math.floor(Math.random() * total);
+    if (r === correctIdx || pickedIdx.has(r)) continue;
+    const def = allWords[r].d;
+    if (seenDef.has(def)) continue;
+    pickedIdx.add(r);
+    seenDef.add(def);
+    wrongIndices.push(r);
+  }
+  // 兜底：词库释义独特数 < 4 时（理论极小概率），允许重复以填满 4 项
   while (wrongIndices.length < 3) {
     const r = Math.floor(Math.random() * total);
-    if (r !== correctIdx && !picked.has(r)) {
-      picked.add(r);
+    if (r !== correctIdx && !pickedIdx.has(r)) {
+      pickedIdx.add(r);
       wrongIndices.push(r);
     }
   }
@@ -360,10 +374,6 @@ export function nextWord() {
   session.cursor++;
   autoSave();
   advanceOrReshuffle();
-
-  if (session.todayUnknown.length >= session.maxUnknown) {
-    endSession();
-  }
 }
 
 /** 推进游标，如果本次抽样序列耗尽则结束测试（保证同一次测试不出现重复单词） */

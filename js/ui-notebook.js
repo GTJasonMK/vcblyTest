@@ -51,8 +51,14 @@ export function renderHomeNotebookSummary(historyList) {
   }
 
   if (preview) {
-    const recent = historyList.slice(-3).reverse();
-    preview.innerHTML = recent.map(h => {
+    // 按 date 排序后取最近 3 条，避免 importAll 后顺序乱掉时 preview 显示错日期
+    const sorted = [...historyList]
+      .map(h => ({ h, ts: new Date(h?.date).getTime() }))
+      .filter(x => Number.isFinite(x.ts))
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 3)
+      .map(x => x.h);
+    preview.innerHTML = sorted.map(h => {
       const d = new Date(h.date);
       const ds = Number.isFinite(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()}` : '?';
       return `<span style="margin:0 2px">${ds} 错${wrongCountOf(h)}词</span>`;
@@ -608,6 +614,10 @@ window.reviewDayWrongWords = () => {
 window.testDayWrongWords = () => {
   const words = collectDayWrongWords();
   if (words.length === 0) { toast('该日没有错词'); return; }
+  // startFilteredSession 会 clearSession()，若存在未完成测试需先确认
+  if (session.active && !confirm('当前有未完成的测试，开始测试当日错词会丢弃该进度。确定继续吗？')) {
+    return;
+  }
   const indices = [];
   for (const w of words) {
     // w.idx 是原始词库索引；即使 w 没有 idx，从 allWords 反查

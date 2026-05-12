@@ -23,11 +23,13 @@ function getConfig() {
  *  @param {string} word - 当前单词
  *  @param {object} options - { definition, pronunciation, extra }
  *  @param {'explain'|'quiz'} mode - 模式：详解 / 问答
- *  @param {string} [question] - 问答模式下用户追问
- *  @param {string} [history] - 历史对话上下文
- *  @returns {Promise<string>} AI 返回的文本
+ *  @param {string} [question] - 用户提问内容
+ *  @param {(chunk: string) => void} [onChunk] - 流式回调，传入则启用 stream
+ *  @param {string} [customPrompt] - 自定义 system prompt（用于不同 tab 的不同 prompt）
+ *  @param {AbortSignal} [externalSignal] - 外部 AbortSignal；触发 abort 时立即中断请求
+ *  @returns {Promise<string>} AI 返回的完整文本
  */
-export async function askAi(word, options = {}, mode = 'explain', question = '', history = '', onChunk = null, customPrompt = null) {
+export async function askAi(word, options = {}, mode = 'explain', question = '', onChunk = null, customPrompt = null, externalSignal = null) {
   const config = getConfig();
   if (!config) throw new Error('请先在设置中配置 API Key');
   if (!/^[\x00-\xFF]*$/.test(config.apiKey)) {
@@ -54,21 +56,22 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
   // system：优先用 customPrompt，否则根据 mode 选默认
   const systemContent = customPrompt || (mode === 'explain' ? explainSystem : quizSystem);
   messages.push({ role: 'system', content: systemContent });
-  // history：仅 quiz 模式（无 customPrompt）时插入
-  if (mode !== 'explain' && !customPrompt && history) {
-    const turns = history.split('\n---NEXT---\n');
-    for (const turn of turns) {
-      const [q, a] = turn.split('\n---ANS---\n');
-      if (q) messages.push({ role: 'user', content: q });
-      if (a) messages.push({ role: 'assistant', content: a });
-    }
-  }
   // user：始终添加（AI 需要 user 消息才知道该做什么），空 question 不添加
   if (question) messages.push({ role: 'user', content: question });
 
   const useStream = typeof onChunk === 'function';
   const ctrl = new AbortController();
+  // 外部 abort 与内部 timeout 任一触发都中断请求
+  const onExternalAbort = () => ctrl.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) ctrl.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
   const timeout = setTimeout(() => ctrl.abort(), 20000);
+  const cleanup = () => {
+    clearTimeout(timeout);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+  };
   const resp = await fetch(config.endpoint, {
     method: 'POST',
     headers: {
@@ -83,7 +86,7 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
       stream: useStream,
     }),
     signal: ctrl.signal,
-  }).finally(() => clearTimeout(timeout));
+  }).finally(cleanup);
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => '');
@@ -103,32 +106,42 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  // 流式期间外部 abort 仍需能中断 reader
+  const abortReader = () => { try { reader.cancel(); } catch {} };
+  if (externalSignal) {
+    if (externalSignal.aborted) abortReader();
+    else externalSignal.addEventListener('abort', abortReader, { once: true });
+  }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    // 按行分割 SSE
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      // 按行分割 SSE
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'data: [DONE]') continue;
-      if (!trimmed.startsWith('data: ')) continue;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
 
-      try {
-        const json = JSON.parse(trimmed.slice(6));
-        const delta = json.choices?.[0]?.delta?.content;
-        if (delta) {
-          full += delta;
-          onChunk(delta);
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            onChunk(delta);
+          }
+        } catch {
+          // 忽略解析失败的 chunk（非关键错误）
         }
-      } catch {
-        // 忽略解析失败的 chunk（非关键错误）
       }
     }
+  } finally {
+    if (externalSignal) externalSignal.removeEventListener('abort', abortReader);
   }
   return full;
 }
@@ -319,13 +332,35 @@ export function renderMarkdown(text) {
   return result.join('\n');
 
   // ---- 行内处理 ----
+  function escapeAttr(v) {
+    return String(v ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch]));
+  }
+  // 安全 URL：仅放行 http/https/mailto 与同源相对路径，阻断 javascript:/data: 等
+  function safeUrl(raw) {
+    const u = String(raw ?? '').trim();
+    if (!u) return '';
+    if (/^(https?:|mailto:)/i.test(u)) return u;
+    // 相对路径、协议相对、片段、查询：放行
+    if (/^[/?#]/.test(u) || !/:/.test(u.split(/[/?#]/)[0])) return u;
+    return '';
+  }
   function processInline(str) {
     if (!str) return '';
     let s = str;
     // 图片 ![alt](url)
-    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy">');
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+      const href = safeUrl(url);
+      if (!href) return escapeAttr(alt);
+      return `<img src="${escapeAttr(href)}" alt="${escapeAttr(alt)}" loading="lazy">`;
+    });
     // 链接 [text](url)
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+      const href = safeUrl(url);
+      if (!href) return text;
+      return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a>`;
+    });
     // ~~删除线~~
     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
     // **粗体**

@@ -46,7 +46,7 @@ python3 scripts/audio/run_split.py                    # 执行 /tmp/ffmpeg_cmds_
 
 ### 加权抽样（学过越错越易出现）
 
-`session.js::buildWeightedOrder` 为每个词计算权重 `1.5 + (wrong / tested) * 2.5`，新词权重 5.0；用 `Math.pow(Math.random(), 1.0 / weight)` 作为 key 排序，得到一次**无放回**的全词序列。`recordWordResult(idx, isCorrect)` 在每次作答时更新 `vocab_word_stats` localStorage key。`getWordProbabilities()` 暴露归一化概率给词汇地图可视化。
+`session.js::buildWeightedOrder` 为每个词计算权重 `2.5 + (wrong / tested) * 1.5`（全对 2.5、全错 4.0），新词权重 5.0；用 `Math.pow(Math.random(), 1.0 / weight)` 作为 key 排序，得到一次**无放回**的全词序列。`recordWordResult(idx, isCorrect)` 在每次作答时更新 `vocab_word_stats` localStorage key。`getWordProbabilities()` 暴露归一化概率给词汇地图可视化。
 
 ### 数据形状约定
 

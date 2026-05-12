@@ -12,6 +12,9 @@ import {
 const player = new Audio();
 let activeButton = null;
 let activePath = '';
+// 单调递增的播放 id：用于 play() Promise 的 catch 区分"我这次"与"我已被后续覆盖"，
+// 修复连点同一按钮时第一个 Promise 因 pause 被 reject 而误清正在播放的按钮 UI。
+let playSeq = 0;
 
 function setButtonPlaying(button, isPlaying) {
   if (!button) return;
@@ -75,13 +78,16 @@ export function playWordAudio(word, zeroBasedIndex, button = null) {
   }
   activeButton = button;
   activePath = path;
+  const myPlayId = ++playSeq;
   setButtonPlaying(activeButton, true);
   cacheAudioAfterPlay(path);
 
   const playResult = player.play();
   if (playResult && typeof playResult.catch === 'function') {
     playResult.catch(() => {
-      if (activePath === path) {
+      // 仅当这次 play 仍是"最新一次"时才清按钮；
+      // 否则说明已被后续 playWordAudio 覆盖，让后续控制 UI。
+      if (myPlayId === playSeq) {
         clearActiveButton();
       }
     });

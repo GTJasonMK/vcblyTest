@@ -223,6 +223,17 @@ export function importAll(jsonText) {
     // 兼容旧格式：纯数组（仅历史记录）
     if (Array.isArray(data)) {
       const cleaned = data.map(sanitizeHistoryEntry).filter(Boolean);
+      // 与新格式保持一致的"导入=替换"语义：清掉非历史的其他数据
+      clearWordStats();
+      clearSession();
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_'))) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch {}
       saveHistory(cleaned);
       return cleaned.length;
     }

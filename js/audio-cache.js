@@ -68,23 +68,39 @@ function saveMeta(meta) {
   }
 }
 
+// META 读-改-写串行化：trim 与 touchMeta 都通过 metaChain 排队执行，
+// 避免并发时 touchMeta 用旧 entries 覆盖 trim 已删除的条目（META 与持久 cache 漂移）。
+let metaChain = Promise.resolve();
+function runMeta(fn) {
+  const next = metaChain.catch(() => {}).then(fn);
+  // 不让外部错误打断链，但保留返回 Promise 供调用方等待
+  metaChain = next.catch(() => {});
+  return next;
+}
+
 function touchMeta(path, patch = {}) {
-  const now = Date.now();
-  const meta = loadMeta();
-  const old = meta.entries[path] || {};
-  let prefetchedOnly = old.prefetchedOnly ?? true;
-  if (patch.prefetchedOnly === false) {
-    prefetchedOnly = false;
-  } else if (old.prefetchedOnly === undefined && patch.prefetchedOnly !== undefined) {
-    prefetchedOnly = patch.prefetchedOnly;
-  }
-  meta.entries[path] = {
-    size: patch.size || old.size || 0,
-    lastAccess: now,
-    hitCount: (old.hitCount || 0) + (patch.hit ? 1 : 0),
-    prefetchedOnly,
-  };
-  saveMeta(meta);
+  // 记录入队时的 epoch；clear 之后排队但还没执行的写入应被丢弃，
+  // 避免 META 被复活回与持久 cache 不一致的状态。
+  const submittedEpoch = cacheEpoch;
+  return runMeta(() => {
+    if (submittedEpoch !== cacheEpoch) return;
+    const now = Date.now();
+    const meta = loadMeta();
+    const old = meta.entries[path] || {};
+    let prefetchedOnly = old.prefetchedOnly ?? true;
+    if (patch.prefetchedOnly === false) {
+      prefetchedOnly = false;
+    } else if (old.prefetchedOnly === undefined && patch.prefetchedOnly !== undefined) {
+      prefetchedOnly = patch.prefetchedOnly;
+    }
+    meta.entries[path] = {
+      size: patch.size || old.size || 0,
+      lastAccess: now,
+      hitCount: (old.hitCount || 0) + (patch.hit ? 1 : 0),
+      prefetchedOnly,
+    };
+    saveMeta(meta);
+  });
 }
 
 function estimateResponseSize(response, fallback = 0) {
@@ -187,12 +203,9 @@ async function _trimPersistentCacheImpl() {
   saveMeta(meta);
 }
 
-// 串行化 trim：并发 cacheAudioNow 同时进入会让 META 与持久 cache 漂移
-// （多份 trim 各自读 meta、删条目、写 meta，最后写入覆盖前者的删除视图）。
-let trimChain = Promise.resolve();
+// trim 也走 metaChain，与 touchMeta 共享同一条串行链。
 function trimPersistentCache() {
-  trimChain = trimChain.catch(() => {}).then(_trimPersistentCacheImpl);
-  return trimChain;
+  return runMeta(_trimPersistentCacheImpl);
 }
 
 function recentlyFailed(path) {
@@ -308,7 +321,9 @@ export async function clearAudioCache() {
     const keys = await caches.keys();
     await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX)).map(key => caches.delete(key)));
   }
-  localStorage.removeItem(META_KEY);
+  // 把"清 META"排到 metaChain 队尾，等所有已入队的 touchMeta 跑完再清空一次，
+  // 避免 cacheAudioAfterPlay 等同步入队的 touchMeta 在 clear 之后复活 META。
+  await runMeta(() => localStorage.removeItem(META_KEY));
 }
 
 export function getAudioCacheStats() {

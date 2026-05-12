@@ -150,9 +150,11 @@ window.showPanel = (name) => {
   }
 };
 
-window.resetAll = () => {
+window.resetAll = async () => {
   if (!confirm('确定重置全部数据（历史记录+设置）吗？此操作不可恢复。')) return;
   clearAll();
+  // 音频缓存的 META 与持久 Cache 不在 storage 模块管辖，统一在这里清掉
+  try { await clearAudioCache(); } catch {}
   location.reload();
 };
 
@@ -188,6 +190,9 @@ window.importAll = (event) => {
       if (document.getElementById('panel-notebook').classList.contains('active')) {
         UI.renderNotebook(loadHistory());
       }
+      if (document.getElementById('panel-history').classList.contains('active')) {
+        UI.renderHistory(loadHistory());
+      }
       if (!document.getElementById('badgeModal').hidden) {
         UI.renderBadgePage(loadHistory());
       }
@@ -207,6 +212,15 @@ window.closeBadgeModal = () => UI.closeBadgeModal();
 
 // ===== AI 详解弹窗 + 例句 =====
 let _aiDetailWord = null;
+// 当前未完成的 AI 请求 controller 集合：切词/关闭弹窗时统一 abort，
+// 避免后台继续消耗 tokens 与带宽。
+const _aiAbortControllers = new Set();
+function abortAllAi() {
+  for (const c of _aiAbortControllers) {
+    try { c.abort(); } catch {}
+  }
+  _aiAbortControllers.clear();
+}
 
 window.openAiDetailModal = async () => {
   try {
@@ -214,6 +228,8 @@ window.openAiDetailModal = async () => {
     if (!modal) { UI.toast('弹窗元素未找到'); return; }
     const word = Session.getCurrentReviewWord();
     if (!word) { UI.toast('没有正在复习的单词'); return; }
+    // 切到新词时取消所有未完成的 AI 请求
+    if (_aiDetailWord && _aiDetailWord.w !== word.w) abortAllAi();
     _aiDetailWord = word;
     const infoEl = document.getElementById('aiDetailWordInfo');
     if (infoEl) infoEl.textContent = `${word.w}  ${word.uk || ''}  ${word.us || ''}  —  ${word.d}`;
@@ -261,6 +277,7 @@ window.closeAiDetailModal = () => {
   try {
     const modal = document.getElementById('aiDetailModal');
     if (!modal) return;
+    abortAllAi();
     modal.hidden = true;
     document.body.classList.remove('modal-open');
   } catch (e) {
@@ -337,6 +354,8 @@ window.generateAiDetail = async (tab, force = false) => {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ai-spinner-inline"></span> 生成中…'; }
   resultEl.innerHTML = '';
 
+  const aiCtrl = new AbortController();
+  _aiAbortControllers.add(aiCtrl);
   try {
     let loaded = false;
     let fullText = '';
@@ -347,7 +366,7 @@ window.generateAiDetail = async (tab, force = false) => {
     await askAi(
       word.w,
       { definition: word.d, pronunciation: `${word.uk || ''} ${word.us || ''}` },
-      'explain', question, '',
+      'explain', question,
       (chunk) => {
         // 竞态守卫：用户在生成过程中切换单词 → 丢弃旧响应
         if (_aiDetailWord?.w !== word.w) return;
@@ -361,7 +380,8 @@ window.generateAiDetail = async (tab, force = false) => {
         fullText += chunk;
         container.innerHTML = renderMarkdown(fullText);
       },
-      prompt
+      prompt,
+      aiCtrl.signal
     );
     // 再次守卫，防止生成完成时用户已切换单词
     if (container && _aiDetailWord?.w === word.w) {
@@ -377,8 +397,12 @@ window.generateAiDetail = async (tab, force = false) => {
       } catch {}
     }
   } catch (e) {
+    // abort 触发的失败不展示错误（属于主动取消）
+    if (aiCtrl.signal.aborted) return;
     if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.text || btn.textContent || '生成'; btn.style.display = ''; }
     resultEl.innerHTML = '<p style="color:var(--accent)">调用失败：' + e.message.replace(/</g, '&lt;') + '</p>';
+  } finally {
+    _aiAbortControllers.delete(aiCtrl);
   }
 };
 
@@ -394,6 +418,8 @@ window.sendAiQuestion = async () => {
   output.innerHTML += '<div class="ai-loading" id="aiQAStatus"><span class="ai-spinner"></span> AI 回答中…</div>';
   output.scrollTop = output.scrollHeight;
   input.value = '';
+  const aiCtrl = new AbortController();
+  _aiAbortControllers.add(aiCtrl);
   try {
     let full = '';
     const container = document.createElement('div');
@@ -404,7 +430,7 @@ window.sendAiQuestion = async () => {
     await askAi(
       word.w,
       { definition: word.d, pronunciation: `${word.uk || ''} ${word.us || ''}` },
-      'explain', question, '',
+      'explain', question,
       (chunk) => {
         // 竞态守卫
         if (_aiDetailWord?.w !== word.w) return;
@@ -416,15 +442,24 @@ window.sendAiQuestion = async () => {
         container.innerHTML = renderMarkdown(full);
         output.scrollTop = output.scrollHeight;
       },
-      qaPrompt
+      qaPrompt,
+      aiCtrl.signal
     );
   } catch (e) {
+    if (aiCtrl.signal.aborted) {
+      // 主动取消时清掉加载指示器即可
+      const status = document.getElementById('aiQAStatus');
+      if (status) status.remove();
+      return;
+    }
     const status = document.getElementById('aiQAStatus');
     if (status) status.remove();
     output.innerHTML += `<p style="color:var(--accent)">调用失败：${escapeHtml(e.message)}</p>`;
     output.scrollTop = output.scrollHeight;
     // 恢复输入（防止用户输入丢失）
     if (input && !input.value) input.value = question;
+  } finally {
+    _aiAbortControllers.delete(aiCtrl);
   }
 };
 
@@ -488,7 +523,8 @@ window.fetchAndShowExample = async () => {
   if (!examples) {
     output.innerHTML = '<div class="ai-loading"><span class="ai-spinner"></span> 正在查找例句…</div>';
     try {
-      const resp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.w)}`);
+      // 主请求加超时（默认 8s），避免 API 卡死时例句区永远转圈
+      const resp = await fetchWithTimeout(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.w)}`);
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data) && data[0]) {
@@ -515,15 +551,22 @@ window.fetchAndShowExample = async () => {
   }
 
   if (examples && examples.length > 0) {
-    let needUpdate = false;
-    for (const ex of examples) {
-      if (ex.en && !ex.cn) {
-        ex.cn = await translateExample(ex.en);
-        if (ex.cn) needUpdate = true;
+    // 缓存命中但缺翻译时，并发补齐（旧实现是串行 await，6 条最差 48s 并且容易耗尽 MyMemory 限额）
+    const pending = examples
+      .map((ex, i) => ex.en && !ex.cn ? { i, en: ex.en } : null)
+      .filter(Boolean);
+    if (pending.length > 0) {
+      const results = await Promise.allSettled(pending.map(p => translateExample(p.en)));
+      let needUpdate = false;
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled' && r.value) {
+          examples[pending[idx].i].cn = r.value;
+          needUpdate = true;
+        }
+      });
+      if (needUpdate) {
+        try { localStorage.setItem(localKey, JSON.stringify(examples)); } catch {}
       }
-    }
-    if (needUpdate) {
-      try { localStorage.setItem(localKey, JSON.stringify(examples)); } catch {}
     }
     output.innerHTML = examples.map((ex, i) =>
       `<div style="margin-bottom:10px">`
