@@ -122,6 +122,7 @@ window.toggleReviewDef = () => {
   const show = el.classList.toggle('show');
   btn.textContent = show ? '🙈' : '👁️';
   btn.title = show ? '遮挡释义' : '显示释义';
+  btn.dataset.blurred = show ? 'false' : 'true';
 };
 // ---- 首页搜索 ----
 (() => {

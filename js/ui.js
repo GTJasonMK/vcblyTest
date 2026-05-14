@@ -350,9 +350,13 @@ export function renderReviewWord(index, total) {
   document.getElementById('reviewPronUs').textContent = w.us ? `美 ${w.us}` : '';
   const defEl = document.getElementById('reviewDef');
   defEl.textContent = resolveDef(w);
-  defEl.classList.add('show');
   const toggleBtn = document.getElementById('reviewToggleDefBtn');
-  if (toggleBtn) { toggleBtn.textContent = '👁️'; toggleBtn.title = '遮挡释义'; }
+  const keepBlurred = toggleBtn && toggleBtn.dataset.blurred === 'true';
+  if (keepBlurred) {
+    defEl.classList.remove('show');
+  } else {
+    defEl.classList.add('show');
+  }
   const jumpInput = document.getElementById('reviewJumpInput');
   if (jumpInput) {
     jumpInput.value = index + 1;
