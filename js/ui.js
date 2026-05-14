@@ -45,6 +45,14 @@ export { renderWordMap } from './ui-word-map.js';
 // ===== 测试面板 =====
 
 /** 隐藏复习面板的例句输出（切换单词时重置） */
+/** 旧记录释义缺失时，从当前词库回补 */
+function resolveDef(w) {
+  if (!w.d || !w.d.includes('找不到解释')) return w.d;
+  const cur = allWords.find(aW => aW.w === w.w);
+  if (cur) return cur.d;
+  return w.d;
+}
+
 function hideReviewAiOutput() {
   const section = document.getElementById('reviewExampleSection');
   const output = document.getElementById('reviewExampleOutput');
@@ -158,7 +166,7 @@ export function renderResult() {
           </div>
           ${renderAudioButton(w)}
         </div>
-        <div class="wl-def">${escapeHtml(w.d)}</div>
+        <div class="wl-def">${escapeHtml(resolveDef(w))}</div>
       </div>
     `).join('');
     preloadWordAudioList(
@@ -296,7 +304,7 @@ export function openHistoryModal(index) {
           </div>
           ${renderAudioButton(w)}
         </div>
-        <div class="history-word-def">${escapeHtml(w.d)}</div>
+        <div class="history-word-def">${escapeHtml(resolveDef(w))}</div>
       </div>
     `).join('')
     : '<p class="history-modal-empty">本次没有错词</p>';
@@ -340,7 +348,11 @@ export function renderReviewWord(index, total) {
   updateAudioButton(document.getElementById('reviewAudioBtn'), w, storedIdx);
   document.getElementById('reviewPronUk').textContent = w.uk ? `英 ${w.uk}` : '';
   document.getElementById('reviewPronUs').textContent = w.us ? `美 ${w.us}` : '';
-  document.getElementById('reviewDef').textContent = w.d;
+  const defEl = document.getElementById('reviewDef');
+  defEl.textContent = resolveDef(w);
+  defEl.classList.add('show');
+  const toggleBtn = document.getElementById('reviewToggleDefBtn');
+  if (toggleBtn) { toggleBtn.textContent = '👁️'; toggleBtn.title = '遮挡释义'; }
   const jumpInput = document.getElementById('reviewJumpInput');
   if (jumpInput) {
     jumpInput.value = index + 1;

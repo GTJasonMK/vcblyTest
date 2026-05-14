@@ -8,11 +8,11 @@
 <link rel="stylesheet" href="css/buttons.css">
 <link rel="stylesheet" href="css/home.css">
 <link rel="stylesheet" href="css/test.css">
-<link rel="stylesheet" href="css/result.css?v=2">
+<link rel="stylesheet" href="css/result.css?v=3">
 <link rel="stylesheet" href="css/history.css?v=2">
 <link rel="stylesheet" href="css/notebook.css">
 <link rel="stylesheet" href="css/badges.css?v=3">
-<link rel="stylesheet" href="css/responsive.css?v=2">
+<link rel="stylesheet" href="css/responsive.css?v=3">
 </head>
 <body>
 
@@ -25,6 +25,13 @@
       <div class="home-header">
         <h1>考研词汇随机测试</h1>
         <div class="subtitle">红宝书</div>
+      </div>
+
+      <!-- 搜索栏 -->
+      <div class="home-search" id="homeSearch">
+        <input type="text" class="home-search-input" id="homeSearchInput" autocomplete="off"
+          placeholder="输入英文或中文搜索单词…" oninput="handleSearchInput(this.value)">
+        <div class="home-search-results" id="homeSearchResults" style="display:none"></div>
       </div>
 
     <!-- 统计摘要栏 -->
@@ -248,7 +255,14 @@
 
   <!-- 复习面板 -->
   <div class="panel" id="panel-review">
-    <h3 style="margin-bottom:16px">复习本次错词</h3>
+    <div class="review-header">
+      <h3>复习本次错词</h3>
+      <div class="review-tools">
+        <button class="review-tool-btn" id="reviewToggleDefBtn" onclick="toggleReviewDef()" title="遮挡释义">👁️</button>
+        <button class="review-tool-btn" onclick="openAiDetailModal()" title="AI 详解">🤖</button>
+        <button class="review-tool-btn" id="reviewExampleBtn" onclick="fetchAndShowExample()" title="查例句">📖</button>
+      </div>
+    </div>
     <div class="review-card">
       <div class="word-line">
         <div class="word-display" id="reviewWord"></div>
@@ -273,10 +287,6 @@
         <span id="reviewTotal">/ 1</span>
       </span>
       <button class="nav-btn" onclick="reviewNext()">▶</button>
-    </div>
-    <div class="review-tools">
-      <button class="review-tool-btn" onclick="openAiDetailModal()" title="AI 详解">🤖</button>
-      <button class="review-tool-btn" id="reviewExampleBtn" onclick="fetchAndShowExample()" title="查例句">📖</button>
     </div>
     <!-- 例句输出区 -->
     <div class="review-ai-section" id="reviewExampleSection" style="display:none">

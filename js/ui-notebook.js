@@ -308,6 +308,11 @@ function showNotebookWordDetail(sessionIdx, wordIdx, options = {}) {
   if (!session || !session.words) return;
   const w = session.words[wordIdx];
   if (!w) return;
+  // 旧记录释义缺失时，从当前词库回补
+  if (w.d && w.d.includes('找不到解释')) {
+    const cur = allWords.find(aW => aW.w === w.w);
+    if (cur) w.d = cur.d;
+  }
 
   _reviewSessionIdx = sessionIdx;
   _reviewWordIdx = wordIdx;

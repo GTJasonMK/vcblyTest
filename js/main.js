@@ -1,6 +1,6 @@
 // ========== 应用入口 ==========
 
-import { initWords, session } from './state.js';
+import { allWords, initWords, session } from './state.js';
 import { loadSettings, loadHistory, saveHistory, clearHistory, clearAll, loadTheme, saveTheme, loadSession, exportAll, importAll, loadAiConfig, saveAiConfig } from './storage.js';
 import { setMaxUnknownInput } from './ui.js';
 import * as UI from './ui.js';
@@ -115,6 +115,113 @@ window.reviewNext = () => Session.reviewNext();
 window.reviewJumpTo = (n) => Session.reviewJumpTo(n);
 window.playReviewWordAudio = () => Session.playReviewWordAudio();
 window.reviewBack = () => showPanel('result'); // 默认返回结果，被 reviewFromNotebook 覆盖
+window.toggleReviewDef = () => {
+  const el = document.getElementById('reviewDef');
+  const btn = document.getElementById('reviewToggleDefBtn');
+  if (!el || !btn) return;
+  const show = el.classList.toggle('show');
+  btn.textContent = show ? '🙈' : '👁️';
+  btn.title = show ? '遮挡释义' : '显示释义';
+};
+// ---- 首页搜索 ----
+(() => {
+  let matches = [];
+  let selectedIdx = -1;
+
+  function closeResults() {
+    const results = document.getElementById('homeSearchResults');
+    if (results) { results.style.display = 'none'; results.innerHTML = ''; }
+    matches = [];
+    selectedIdx = -1;
+  }
+
+  function doSearch(query) {
+    const results = document.getElementById('homeSearchResults');
+    if (!results || !allWords.length) return;
+    const q = query.trim().toLowerCase();
+    if (!q || q.length < 1) { closeResults(); return; }
+
+    const isChinese = /[一-鿿]/.test(q);
+    matches = [];
+    for (const w of allWords) {
+      if (isChinese) {
+        if (w.d && w.d.includes(q)) matches.push(w);
+      } else {
+        if (w.w.toLowerCase().includes(q)) matches.push(w);
+      }
+      if (matches.length >= 30) break;
+    }
+    selectedIdx = -1;
+
+    if (matches.length === 0) {
+      results.innerHTML = '<div class="home-search-empty">未找到匹配的单词</div>';
+    } else {
+      results.innerHTML = matches.map((w, i) =>
+        `<div class="home-search-item" data-idx="${i}" onmousedown="event.preventDefault();selectSearchResult(${i})">
+          <div class="hsi-word">${escapeHtml(w.w)}</div>
+          <div class="hsi-def">${escapeHtml(w.d)}</div>
+        </div>`
+      ).join('');
+    }
+    results.style.display = 'block';
+  }
+
+  window.handleSearchInput = (value) => doSearch(value);
+
+  window.selectSearchResult = (idx) => {
+    const w = matches[idx];
+    if (!w) return;
+    const input = document.getElementById('homeSearchInput');
+    if (input) {
+      input.value = `${w.w}  ${w.uk ? '英' + w.uk + ' ' : ''}${w.us ? '美' + w.us : ''}`;
+    }
+    const results = document.getElementById('homeSearchResults');
+    if (results) {
+      results.innerHTML = `<div class="home-search-item" style="cursor:default">
+        <div class="hsi-word">${escapeHtml(w.w)}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin:2px 0">
+          ${w.uk ? '英' + escapeHtml(w.uk) + ' ' : ''}${w.us ? '美' + escapeHtml(w.us) : ''}
+        </div>
+        <div class="hsi-def" style="-webkit-line-clamp:unset">${escapeHtml(w.d)}</div>
+      </div>`;
+    }
+    matches = [];
+    selectedIdx = -1;
+  };
+
+  // 键盘导航
+  document.addEventListener('keydown', (e) => {
+    const results = document.getElementById('homeSearchResults');
+    if (!results || results.style.display === 'none') return;
+    const input = document.getElementById('homeSearchInput');
+    if (!input || document.activeElement !== input) return;
+
+    const items = results.querySelectorAll('.home-search-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIdx = Math.min(selectedIdx + 1, items.length - 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIdx = Math.max(selectedIdx - 1, 0);
+    } else if (e.key === 'Enter' && selectedIdx >= 0) {
+      e.preventDefault();
+      window.selectSearchResult(selectedIdx);
+      return;
+    } else if (e.key === 'Escape') {
+      closeResults();
+      input.blur();
+      return;
+    } else { return; }
+    items.forEach((el, i) => el.classList.toggle('active', i === selectedIdx));
+  });
+
+  // 点击外部关闭
+  document.addEventListener('click', (e) => {
+    const search = document.getElementById('homeSearch');
+    if (search && !search.contains(e.target)) closeResults();
+  });
+})();
+
 window.playWordAudioFromButton = (button) => {
   if (!playWordAudioFromButton(button)) {
     UI.toast('当前单词暂无音频');
