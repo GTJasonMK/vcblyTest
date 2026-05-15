@@ -45,6 +45,7 @@ export function clearAll() {
   localStorage.removeItem(STORAGE_KEY.SETTINGS);
   localStorage.removeItem(STORAGE_KEY.WORD_STATS);
   localStorage.removeItem(STORAGE_KEY.AI_CONFIG);
+  localStorage.removeItem(STORAGE_KEY.READER_ARTICLES);
   clearSession();
   // 清空 AI 缓存 + 例句缓存
   try {
@@ -126,6 +127,57 @@ export function clearSession() {
   localStorage.removeItem(STORAGE_KEY.SESSION);
 }
 
+// ===== 阅读训练文章 =====
+
+/** 读取全部阅读文章：{ dateKey: { sessionKey: article } } */
+export function loadReaderArticles() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY.READER_ARTICLES) || '{}');
+  } catch { return {}; }
+}
+
+/** 保存全部阅读文章 */
+export function saveReaderArticles(articles) {
+  if (!articles || Object.keys(articles).length === 0) {
+    localStorage.removeItem(STORAGE_KEY.READER_ARTICLES);
+    return;
+  }
+  // 自动清理：超过 90 天的文章
+  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  for (const dateKey of Object.keys(articles)) {
+    const d = new Date(dateKey);
+    if (isNaN(d.getTime()) || d.getTime() < cutoff) {
+      delete articles[dateKey];
+    }
+  }
+  localStorage.setItem(STORAGE_KEY.READER_ARTICLES, JSON.stringify(articles));
+}
+
+/** 获取指定文章 */
+export function getReaderArticle(dateKey, sessionKey) {
+  const all = loadReaderArticles();
+  return (all[dateKey] && all[dateKey][sessionKey]) ? all[dateKey][sessionKey] : null;
+}
+
+/** 保存/更新指定文章 */
+export function saveReaderArticle(dateKey, sessionKey, article) {
+  const all = loadReaderArticles();
+  if (!all[dateKey]) all[dateKey] = {};
+  all[dateKey][sessionKey] = article;
+  saveReaderArticles(all);
+}
+
+/** 删除指定文章 */
+export function deleteReaderArticle(dateKey, sessionKey) {
+  const all = loadReaderArticles();
+  if (all[dateKey]) {
+    delete all[dateKey][sessionKey];
+    if (Object.keys(all[dateKey]).length === 0) delete all[dateKey];
+  }
+  saveReaderArticles(all);
+}
+
 // ===== AI API 配置 =====
 
 export function loadAiConfig() {
@@ -188,7 +240,8 @@ export function exportAll() {
     }
   } catch {}
   const session = loadSession();
-  if (history.length === 0 && Object.keys(wordStats).length === 0 && Object.keys(extraCache).length === 0 && !session) {
+  const readerArticles = loadReaderArticles();
+  if (history.length === 0 && Object.keys(wordStats).length === 0 && Object.keys(extraCache).length === 0 && !session && Object.keys(readerArticles).length === 0) {
     return null;
   }
   const data = {
@@ -200,6 +253,7 @@ export function exportAll() {
     theme: loadTheme(),
     aiConfig: loadAiConfig(),
     session,
+    readerArticles,
   };
   if (Object.keys(extraCache).length > 0) data.extraCache = extraCache;
   const json = JSON.stringify(data, null, 2);
@@ -283,6 +337,11 @@ export function importAll(jsonText) {
     if (data.session && typeof data.session === 'object'
         && Array.isArray(data.session.order) && data.session.order.length > 0) {
       try { localStorage.setItem(STORAGE_KEY.SESSION, JSON.stringify(data.session)); } catch {}
+    }
+
+    // 恢复阅读文章
+    if (data.readerArticles && typeof data.readerArticles === 'object') {
+      try { saveReaderArticles(data.readerArticles); } catch {}
     }
 
     return cleaned.length;

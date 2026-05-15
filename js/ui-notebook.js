@@ -14,6 +14,8 @@ import {
   toast,
   wrongCountOf,
 } from './ui-common.js';
+import { openReaderWithWords, viewReaderArticle } from './ui-reader.js';
+import { getReaderArticle } from './storage.js';
 
 // ===== 模块状态 =====
 
@@ -244,14 +246,24 @@ function renderReviewBody(historyList, dateFilter) {
   const totalWrong = _reviewDaySessions.reduce((s, h) => s + (h.words ? h.words.length : 0), 0);
   titleEl.textContent = `${dateFilter} — ${_reviewDaySessions.length}次测试 · ${totalWrong}个错词`;
 
-  // 操作按钮行：复习 / 测试 当日全部错词
+  // 操作按钮行：复习 / 测试 / 本场阅读 / 今日阅读
   const actionsEl = document.getElementById('nbReviewActions');
   if (actionsEl) {
     actionsEl.style.display = 'flex';
+    actionsEl.style.flexDirection = 'column';
+    actionsEl.style.gap = '8px';
+    const daySaved = calSelected ? getReaderArticle(calSelected, '_day') : null;
     actionsEl.innerHTML = `
-      <button class="btn btn-secondary btn-sm" onclick="reviewDayWrongWords()">📖 复习当日错词</button>
-      <button class="btn btn-accent btn-sm" onclick="testDayWrongWords()">📝 测试当日错词</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="reviewDayWrongWords()">📖 复习当日错词</button>
+        <button class="btn btn-accent btn-sm" onclick="testDayWrongWords()">📝 测试当日错词</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" id="nbSessionReaderBtn" onclick="openSessionReader()">📄 生成本场文章</button>
+        <button class="btn btn-outline btn-sm" id="nbDayReaderBtn" onclick="openDayReader()">${daySaved ? '📚 查看今日文章' : '📚 生成今日文章'}</button>
+      </div>
     `;
+    _updateSessionReaderButton();
   }
 
   // 渲染顶栏：测试次数选择tab
@@ -355,9 +367,19 @@ window.showWordDetail = (sessionIdx, wordIdx) => {
   showNotebookWordDetail(sessionIdx, wordIdx);
 };
 
+/** 更新"本场文章"按钮文案 */
+function _updateSessionReaderButton() {
+  const btn = document.getElementById('nbSessionReaderBtn');
+  if (!btn || !calSelected) return;
+  const key = String(_reviewSessionIdx);
+  const saved = getReaderArticle(calSelected, key);
+  btn.textContent = saved ? '📄 查看本场文章' : '📄 生成本场文章';
+}
+
 /** 切换测试会话 */
 window.selectReviewSession = (idx) => {
   renderReviewSessionWords(idx);
+  _updateSessionReaderButton();
 };
 
 export function moveNotebookWord(delta) {
@@ -634,4 +656,39 @@ window.testDayWrongWords = () => {
     }
   }
   import('./session.js').then(({ startFilteredSession }) => startFilteredSession(indices));
+};
+
+/** 生成本场文章：用当前选中场次的全部错词 */
+window.openSessionReader = () => {
+  if (_reviewSessionIdx < 0 || _reviewSessionIdx >= _reviewDaySessions.length) {
+    toast('请先选择测试场次');
+    return;
+  }
+  const words = _reviewDaySessions[_reviewSessionIdx].words || [];
+  if (words.length === 0) { toast('当前场次没有错词'); return; }
+
+  // 检查是否已有保存的文章
+  const dateKey = calSelected;
+  const sessionKey = String(_reviewSessionIdx);
+  const existing = getReaderArticle(dateKey, sessionKey);
+  if (existing) {
+    viewReaderArticle(dateKey, sessionKey);
+  } else {
+    openReaderWithWords(words, { dateKey, sessionKey });
+  }
+};
+
+/** 生成今日文章：用当日所有场次的错词（去重） */
+window.openDayReader = () => {
+  const words = collectDayWrongWords();
+  if (words.length === 0) { toast('当天没有错词'); return; }
+
+  const dateKey = calSelected;
+  const sessionKey = '_day';
+  const existing = getReaderArticle(dateKey, sessionKey);
+  if (existing) {
+    viewReaderArticle(dateKey, sessionKey);
+  } else {
+    openReaderWithWords(words, { dateKey, sessionKey });
+  }
 };

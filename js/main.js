@@ -8,6 +8,7 @@ import * as Session from './session.js';
 import { clearAudioCache, playWordAudioFromButton, registerAudioServiceWorker } from './audio.js';
 import { escapeHtml } from './ui-common.js';
 import { askAi, renderMarkdown } from './ai.js';
+import { openReaderWithWords, closeReader, regenReaderArticle, startGenerateReader } from './ui-reader.js';
 import { PANEL } from './constants.js';
 
 // ===== 主题管理 =====
@@ -317,6 +318,12 @@ window.importAll = (event) => {
 };
 
 window.closeBadgeModal = () => UI.closeBadgeModal();
+
+// ===== 阅读训练 =====
+window.openReaderWithWords = (words, opts) => openReaderWithWords(words, opts);
+window.closeReader = () => closeReader();
+window.regenReaderArticle = () => regenReaderArticle();
+window.startGenerateReader = () => startGenerateReader();
 
 // ===== AI 详解弹窗 + 例句 =====
 let _aiDetailWord = null;
@@ -771,6 +778,11 @@ document.addEventListener('keydown', e => {
   const historyModal = document.getElementById('historyModal');
   if (historyModal && !historyModal.hidden) {
     if (e.key === 'Escape') UI.closeHistoryModal();
+    return;
+  }
+  const readerModal = document.getElementById('readerModal');
+  if (readerModal && !readerModal.hidden) {
+    if (e.key === 'Escape') closeReader();
     return;
   }
 

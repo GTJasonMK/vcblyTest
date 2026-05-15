@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="css/notebook.css">
 <link rel="stylesheet" href="css/badges.css?v=3">
 <link rel="stylesheet" href="css/responsive.css?v=3">
+<link rel="stylesheet" href="css/reader.css">
 </head>
 <body>
 
@@ -502,6 +503,32 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 阅读训练弹窗 -->
+  <div class="badge-modal" id="readerModal" hidden>
+    <div class="badge-modal-backdrop" onclick="closeReader()"></div>
+    <div class="badge-modal-dialog reader-dialog" role="dialog" aria-modal="true" aria-labelledby="readerTitle">
+      <div class="badge-topbar reader-topbar">
+        <button class="nav-link" onclick="closeReader()">关闭</button>
+        <h3 id="readerTitle" style="margin:0">📖 阅读训练</h3>
+        <button class="btn btn-accent btn-sm" id="readerRegenBtn" onclick="regenReaderArticle()" style="display:none">换一篇</button>
+      </div>
+      <!-- 生成触发区 -->
+      <div class="reader-begin" id="readerBegin" style="display:none">
+        <p class="reader-begin-hint">共 <span id="readerWordCount">0</span> 个错词</p>
+        <button class="btn btn-accent" onclick="startGenerateReader()">✨ 开始生成文章</button>
+      </div>
+      <!-- 加载动画 -->
+      <div class="reader-loading" id="readerLoading" style="display:none">
+        <div class="reader-loading-spinner"></div>
+        <div class="reader-loading-text" id="readerLoadingText">AI 正在生成文章…</div>
+      </div>
+      <!-- 文章区 -->
+      <div class="reader-article markdown-body" id="readerArticle"></div>
+      <!-- 空状态 -->
+      <div class="reader-empty" id="readerEmpty" style="display:none"></div>
     </div>
   </div>
 

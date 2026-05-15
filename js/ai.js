@@ -67,9 +67,9 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
     if (externalSignal.aborted) ctrl.abort();
     else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
   }
-  const timeout = setTimeout(() => ctrl.abort(), 20000);
+  const connTimeout = setTimeout(() => ctrl.abort(), 180000);
   const cleanup = () => {
-    clearTimeout(timeout);
+    clearTimeout(connTimeout);
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
   };
   const resp = await fetch(config.endpoint, {
@@ -81,7 +81,7 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
     body: JSON.stringify({
       model: config.model,
       messages,
-      max_tokens: 1200,
+      max_tokens: 8192,
       temperature: 0.7,
       stream: useStream,
     }),
@@ -113,9 +113,17 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
     else externalSignal.addEventListener('abort', abortReader, { once: true });
   }
 
+  // 流式心跳超时：90s 无数据则中止，防止服务端暂停导致前端永久卡住
+  let streamTimeout = setTimeout(() => abortReader(), 90000);
+  const resetStreamTimeout = () => {
+    clearTimeout(streamTimeout);
+    streamTimeout = setTimeout(() => abortReader(), 90000);
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
+      clearTimeout(streamTimeout);
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -139,8 +147,10 @@ export async function askAi(word, options = {}, mode = 'explain', question = '',
           // 忽略解析失败的 chunk（非关键错误）
         }
       }
+      resetStreamTimeout();
     }
   } finally {
+    clearTimeout(streamTimeout);
     if (externalSignal) externalSignal.removeEventListener('abort', abortReader);
   }
   return full;
