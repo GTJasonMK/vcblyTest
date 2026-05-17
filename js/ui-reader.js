@@ -122,23 +122,24 @@ export function closeReader() {
 /** 顶栏"换一篇"：按当前 tab 分派 */
 export async function regenReaderArticle() {
   const btn = document.getElementById('readerRegenBtn');
+  const setBtn = (busy) => {
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.textContent = busy ? '生成中…' : '换一篇';
+  };
 
   if (_activeTab === 'translation') {
     if (!_articleMarkdown) return;
-    if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
-    _translationMarkdown = '';
-    const t = document.getElementById('readerTranslation');
-    if (t) t.innerHTML = '';
+    setBtn(true);
     await generateTranslation();
-    if (btn) { btn.disabled = false; btn.textContent = '换一篇'; }
+    setBtn(false);
     return;
   }
 
-  if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
-  _articleMarkdown = '';
+  setBtn(true);
   _cascadeClearTranslation();
   await generateReaderArticle();
-  if (btn) { btn.disabled = false; btn.textContent = '换一篇'; }
+  setBtn(false);
 }
 
 // ===== 内部函数 =====
@@ -186,147 +187,131 @@ function _displayArticle(markdown) {
   _updateRegenBtn();
 }
 
-/** 生成/重新生成英文文章（阅读 tab） */
-async function generateReaderArticle() {
-  if (_readerWords.length === 0) return;
+/** 通用 AI 流式生成骨架：abort 旧 ctrl / 重置 UI / 处理流式 chunk / 错误兜底 / 释放 ctrl。
+ *  内容渲染（markdown 解析、目标词高亮等）由 onChunkRender 承担。
+ *  返回最终完整字符串；任何失败/中止都返回 ''。 */
+async function _runAiStream(opts) {
+  const {
+    contentEl, loadingEl, emptyEl, beginEl,
+    storeCtrl, anchorWord, question, systemPrompt,
+    onChunkRender, errorLabel,
+  } = opts;
+  if (!contentEl || !loadingEl) return '';
 
-  const article = document.getElementById('readerArticle');
-  const loading = document.getElementById('readerLoading');
-  const empty = document.getElementById('readerEmpty');
-  const regenBtn = document.getElementById('readerRegenBtn');
-  if (!article || !loading) return;
+  contentEl.innerHTML = '';
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (beginEl) beginEl.style.display = 'none';
+  loadingEl.style.display = 'flex';
 
-  if (_articleCtrl) {
-    try { _articleCtrl.abort(); } catch {}
-  }
-  _hidePopup();
-
-  article.innerHTML = '';
-  empty.style.display = 'none';
-  if (regenBtn) regenBtn.style.display = 'none';
-  loading.style.display = 'flex';
-
-  _articleCtrl = new AbortController();
-  const ctrl = _articleCtrl;
+  const ctrl = new AbortController();
+  storeCtrl(ctrl);
   let firstChunk = true;
+  let full = '';
 
   try {
-    _articleMarkdown = await askAi(
-      _readerWords[0].w,
-      {},
-      'explain',
-      _buildQuestion(_readerWords),
+    full = await askAi(
+      anchorWord, {}, 'explain', question,
       (chunk) => {
         if (ctrl.signal.aborted) return;
         if (firstChunk) {
           firstChunk = false;
-          loading.style.display = 'none';
-          article.style.display = '';
+          loadingEl.style.display = 'none';
+          contentEl.style.display = '';
           _updateRegenBtn();
         }
-        _articleMarkdown += chunk;
-        article.innerHTML = renderMarkdown(_articleMarkdown);
-        _highlightWords(article, _readerWords);
-        article.scrollTop = article.scrollHeight;
+        onChunkRender(chunk);
       },
-      _buildSystemPrompt(),
-      ctrl.signal
+      systemPrompt, ctrl.signal,
     );
   } catch (err) {
-    loading.style.display = 'none';
+    loadingEl.style.display = 'none';
     if (ctrl.signal.aborted) {
-      _articleCtrl = null;
-      return;
+      storeCtrl(null);
+      return '';
     }
-    console.error('生成阅读文章失败', err);
-    article.innerHTML = '';
-    empty.style.display = '';
-    empty.innerHTML = `<p>😥 文章生成失败</p><p style="font-size:0.8rem;color:var(--text-muted)">${escapeHtml(err.message || '未知错误')}</p>`;
-    if (regenBtn) regenBtn.style.display = 'none';
-    _articleCtrl = null;
-    return;
+    console.error(`${errorLabel}失败`, err);
+    contentEl.innerHTML = '';
+    if (emptyEl) {
+      emptyEl.style.display = '';
+      emptyEl.innerHTML = `<p>😥 ${errorLabel}失败</p><p style="font-size:0.8rem;color:var(--text-muted)">${escapeHtml(err.message || '未知错误')}</p>`;
+    }
+    storeCtrl(null);
+    return '';
   }
 
-  if (_articleMarkdown && !article.innerHTML) {
-    _displayArticle(_articleMarkdown);
+  // 非流式后端兜底：onChunkRender 从未触发，渲染一次完整结果
+  if (firstChunk && full) {
+    loadingEl.style.display = 'none';
+    contentEl.style.display = '';
+    onChunkRender(full);
+    _updateRegenBtn();
   }
 
-  if (_articleMarkdown && _articleMeta) {
-    _saveCurrent();
-  }
+  storeCtrl(null);
+  return full;
+}
 
-  _articleCtrl = null;
+/** 生成/重新生成英文文章（阅读 tab） */
+async function generateReaderArticle() {
+  if (_readerWords.length === 0) return;
+  const article = document.getElementById('readerArticle');
+  if (!article) return;
+
+  if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} }
+  _hidePopup();
+  _articleMarkdown = '';
+
+  const full = await _runAiStream({
+    contentEl: article,
+    loadingEl: document.getElementById('readerLoading'),
+    emptyEl: document.getElementById('readerEmpty'),
+    beginEl: null,
+    storeCtrl: (c) => { _articleCtrl = c; },
+    anchorWord: _readerWords[0].w,
+    question: _buildQuestion(_readerWords),
+    systemPrompt: _buildSystemPrompt(),
+    onChunkRender: (chunk) => {
+      _articleMarkdown += chunk;
+      article.innerHTML = renderMarkdown(_articleMarkdown);
+      _highlightWords(article, _readerWords);
+      article.scrollTop = article.scrollHeight;
+    },
+    errorLabel: '文章生成',
+  });
+
+  if (!full) _articleMarkdown = '';
+  if (full && _articleMeta) _saveCurrent();
   _updateRegenBtn();
 }
 
 /** 生成/重新生成中文译文（翻译 tab） */
 async function generateTranslation() {
   if (!_articleMarkdown) return;
-
   const transEl = document.getElementById('readerTranslation');
-  const loading = document.getElementById('readerTransLoading');
-  const empty = document.getElementById('readerTransEmpty');
-  const begin = document.getElementById('readerTransBegin');
-  if (!transEl || !loading) return;
+  if (!transEl) return;
 
-  if (_translationCtrl) {
-    try { _translationCtrl.abort(); } catch {}
-  }
+  if (_translationCtrl) { try { _translationCtrl.abort(); } catch {} }
+  _translationMarkdown = '';
 
-  transEl.innerHTML = '';
-  if (empty) empty.style.display = 'none';
-  if (begin) begin.style.display = 'none';
-  loading.style.display = 'flex';
+  const full = await _runAiStream({
+    contentEl: transEl,
+    loadingEl: document.getElementById('readerTransLoading'),
+    emptyEl: document.getElementById('readerTransEmpty'),
+    beginEl: document.getElementById('readerTransBegin'),
+    storeCtrl: (c) => { _translationCtrl = c; },
+    anchorWord: _readerWords[0]?.w || 'translate',
+    question: _buildTranslationQuestion(),
+    systemPrompt: _buildTranslationSystemPrompt(),
+    onChunkRender: (chunk) => {
+      _translationMarkdown += chunk;
+      transEl.innerHTML = renderMarkdown(_translationMarkdown);
+      transEl.scrollTop = transEl.scrollHeight;
+    },
+    errorLabel: '翻译生成',
+  });
 
-  _translationCtrl = new AbortController();
-  const ctrl = _translationCtrl;
-  let firstChunk = true;
-
-  try {
-    _translationMarkdown = await askAi(
-      _readerWords[0]?.w || 'translate',
-      {},
-      'explain',
-      _buildTranslationQuestion(),
-      (chunk) => {
-        if (ctrl.signal.aborted) return;
-        if (firstChunk) {
-          firstChunk = false;
-          loading.style.display = 'none';
-          _updateRegenBtn();
-        }
-        _translationMarkdown += chunk;
-        transEl.innerHTML = renderMarkdown(_translationMarkdown);
-        transEl.scrollTop = transEl.scrollHeight;
-      },
-      _buildTranslationSystemPrompt(),
-      ctrl.signal
-    );
-  } catch (err) {
-    loading.style.display = 'none';
-    if (ctrl.signal.aborted) {
-      _translationCtrl = null;
-      return;
-    }
-    console.error('生成翻译失败', err);
-    transEl.innerHTML = '';
-    if (empty) {
-      empty.style.display = '';
-      empty.innerHTML = `<p>😥 翻译生成失败</p><p style="font-size:0.8rem;color:var(--text-muted)">${escapeHtml(err.message || '未知错误')}</p>`;
-    }
-    _translationCtrl = null;
-    return;
-  }
-
-  if (_translationMarkdown && !transEl.innerHTML) {
-    transEl.innerHTML = renderMarkdown(_translationMarkdown);
-  }
-
-  if (_translationMarkdown && _articleMeta) {
-    _saveCurrent();
-  }
-
-  _translationCtrl = null;
+  if (!full) _translationMarkdown = '';
+  if (full && _articleMeta) _saveCurrent();
   _updateRegenBtn();
 }
 
@@ -343,10 +328,7 @@ function _syncTranslationPane() {
     if (begin) begin.style.display = 'none';
     if (loading) loading.style.display = 'none';
     if (transEl) transEl.innerHTML = '';
-    if (empty) {
-      empty.style.display = '';
-      empty.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem">请先在「阅读」标签生成文章。</p>';
-    }
+    _setTransEmpty('请先在「阅读」标签生成文章。');
     return;
   }
 
@@ -376,13 +358,17 @@ function _cascadeClearTranslation() {
   if (transEl) transEl.innerHTML = '';
   const begin = document.getElementById('readerTransBegin');
   const loading = document.getElementById('readerTransLoading');
-  const empty = document.getElementById('readerTransEmpty');
   if (loading) loading.style.display = 'none';
-  if (empty) {
-    empty.style.display = '';
-    empty.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem">文章已更新，请重新生成翻译。</p>';
-  }
+  _setTransEmpty('文章已更新，请重新生成翻译。');
   if (begin) begin.style.display = 'flex';
+}
+
+/** 翻译 pane 空状态文案：统一字号/颜色 */
+function _setTransEmpty(msg) {
+  const empty = document.getElementById('readerTransEmpty');
+  if (!empty) return;
+  empty.style.display = '';
+  empty.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem">${escapeHtml(msg)}</p>`;
 }
 
 /** 顶栏"换一篇"按钮显隐：当前 tab 有内容才出现 */
@@ -491,12 +477,11 @@ function _escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** 保存当前条目（阅读+翻译合并写入）到 localStorage */
+/** 保存当前条目（阅读+翻译合并写入）到 localStorage。
+ *  内存状态即为完整真值，直接覆写整条；无需读旧值合并。 */
 function _saveCurrent() {
   if (!_articleMeta || !_articleMarkdown) return;
-  const existing = getReaderArticle(_articleMeta.dateKey, _articleMeta.sessionKey) || {};
   saveReaderArticle(_articleMeta.dateKey, _articleMeta.sessionKey, {
-    ...existing,
     words: _readerWords.map(w => ({ w: w.w, uk: w.uk, us: w.us, d: w.d })),
     markdown: _articleMarkdown,
     translation: _translationMarkdown || undefined,
