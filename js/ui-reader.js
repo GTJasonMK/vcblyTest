@@ -592,3 +592,79 @@ document.addEventListener('click', (e) => {
   const us = target.dataset.us;
   if (w) _showPopup(w, def, uk, us, e);
 });
+
+// ===== 移动端：左右滑动切 tab =====
+// 仅在 ≤640px 且 touch 起点落在 reader 的 pane 内时响应；
+// 锁主方向避免劫持垂直滚动；阈值 50px / 800ms / |dx|>|dy|。
+
+(() => {
+  const SWIPE_DIST = 50;
+  const SWIPE_MAX_MS = 800;
+  const LOCK_AXIS_AT = 8;
+
+  let startX = 0, startY = 0, startT = 0;
+  let tracking = false;
+  let horizontal = null; // null | true | false
+
+  function inPane(target) {
+    const modal = document.getElementById('readerModal');
+    if (!modal || modal.hidden) return false;
+    const a = document.getElementById('readerPaneArticle');
+    const b = document.getElementById('readerPaneTranslation');
+    return (a && a.contains(target)) || (b && b.contains(target));
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    if (window.innerWidth > 640) return;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (!inPane(t.target)) return;
+    startX = t.clientX;
+    startY = t.clientY;
+    startT = Date.now();
+    tracking = true;
+    horizontal = null;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!tracking || horizontal !== null) return;
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) > LOCK_AXIS_AT || Math.abs(dy) > LOCK_AXIS_AT) {
+      horizontal = Math.abs(dx) > Math.abs(dy);
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!tracking) return;
+    tracking = false;
+    if (horizontal !== true) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Date.now() - startT > SWIPE_MAX_MS) return;
+    if (Math.abs(dx) < SWIPE_DIST) return;
+    if (Math.abs(dy) > Math.abs(dx)) return;
+
+    if (dx < 0 && _activeTab === 'article') _swipeToTab('translation', 'left');
+    else if (dx > 0 && _activeTab === 'translation') _swipeToTab('article', 'right');
+  });
+
+  document.addEventListener('touchcancel', () => { tracking = false; });
+})();
+
+/** 滑动触发的 tab 切换：给目标 pane 短暂加上方向动画 class，再走常规 switchReaderTab */
+function _swipeToTab(tab, fromDir) {
+  const paneId = tab === 'translation' ? 'readerPaneTranslation' : 'readerPaneArticle';
+  const pane = document.getElementById(paneId);
+  if (pane) {
+    pane.classList.remove('swipe-in-right', 'swipe-in-left');
+    const cls = fromDir === 'left' ? 'swipe-in-right' : 'swipe-in-left';
+    pane.classList.add(cls);
+    pane.addEventListener('animationend', () => {
+      pane.classList.remove(cls);
+    }, { once: true });
+  }
+  switchReaderTab(tab);
+}
