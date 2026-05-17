@@ -37,12 +37,14 @@ python3 scripts/audio/run_split.py                    # 执行 /tmp/ffmpeg_cmds_
 - `ui-badges.js` —— 徽章馆 + 称号 + 首页成就面板：`TITLE_LEVELS` / `BADGE_DEFINITIONS` / 评估、`renderBadgePage` / `openBadgeModal` / `closeBadgeModal` / `renderAchievements` / `positionAchievePanel`。
 - `ui-notebook.js` —— 错词本：日历、Tab（日历/趋势）、错词回顾分栏、移动手柄按钮、柱状图。模块顶层挂 `window.calPrevMonth` / `calNextMonth` / `calSelectDate` / `showWordDetail` / `selectReviewSession` / `notebook*` / `switchNbTab`。
 - `ui-word-map.js` —— 概率地图 + KDE 分布图：`renderWordMap` 是公开 API，模块顶层用 `DOMContentLoaded` 注册 mousemove/click/range input 监听器，并挂 `window.testMapRange`。
-- `storage.js` —— localStorage 5 个 key 的读写 + 全量数据导入/导出 + 形状校验（`sanitizeHistoryEntry`、`sanitizeWordStats`）。
+- `storage.js` —— localStorage 7 个命名 key 的读写 + 全量数据导入/导出 + 形状校验（`sanitizeHistoryEntry`、`sanitizeWordStats`）。`exportAll/importAll` 还会扫描 `vcbly_ai_*` / `vcbly_examples_*` 前缀键（AI 详解与例句缓存，不在 `STORAGE_KEY` 常量中）。
+- `ai.js` —— OpenAI 兼容 chat completions 调用器（默认 deepseek，可在设置中改 endpoint/model/key）。`askAi(word, options, mode, question, onChunk, customPrompt, externalSignal)` 支持流式（传 `onChunk` 即启用 stream）和 `AbortSignal` 中断；额外导出 `isAiConfigured` 和 `renderMarkdown`。配置读自 `vocab_ai_config`。
+- `ui-reader.js` —— 阅读训练模态，含两个 tab：「阅读」（用 `askAi` 把错词组成英文短文，目标词高亮可点击查释义）和「翻译」（对同一篇英文做整篇中文翻译，懒加载、按钮独立触发）。两 tab 各持独立 `AbortController`，切 tab 不打断对方流式生成。文章+译文合并到同一条 `vocab_reader_articles` 条目（`{markdown, translation, words, generatedAt}`），重新生成文章会级联清空译文（避免静默错配）。模块顶层不挂 window，所有动作（`openReaderWithWords` / `closeReader` / `regenReaderArticle` / `startGenerateReader` / `startGenerateTranslation` / `switchReaderTab`）由 `main.js` 桥接。
 - `audio.js` + `audio-cache.js` —— 音频播放和三层缓存。
 - `sw.js` —— Service Worker，拦截 `.m4a` 请求并支持 HTTP Range，缓存名带 manifest 版本号。
 - `constants.js` —— `PANEL`（DOM ID）、`STORAGE_KEY`（localStorage 键）、默认值。
 
-**ESM 依赖图（无循环）**：`ui.js → ui-common.js / ui-badges.js / ui-notebook.js / ui-word-map.js`；子模块 `→ ui-common.js`；`ui-word-map.js → ui-badges.js`（用 positionAchievePanel）；`ui.js / ui-word-map.js → session.js`（用 getWordProbabilities，与 `session.js → ui.js` 形成 live-binding 循环，但所有调用都在加载完成后触发，安全）。
+**ESM 依赖图（无循环）**：`ui.js → ui-common.js / ui-badges.js / ui-notebook.js / ui-word-map.js`；子模块 `→ ui-common.js`；`ui-word-map.js → ui-badges.js`（用 positionAchievePanel）；`ui-reader.js → ai.js / ui-common.js / storage.js`；`main.js → ai.js / ui-reader.js`（桥接 window）；`ui.js / ui-word-map.js → session.js`（用 getWordProbabilities，与 `session.js → ui.js` 形成 live-binding 循环，但所有调用都在加载完成后触发，安全）。
 
 ### 加权抽样（学过越错越易出现）
 
@@ -70,12 +72,16 @@ python3 scripts/audio/run_split.py                    # 执行 /tmp/ffmpeg_cmds_
 
 ### 状态持久化与断点续测
 
-5 个 localStorage key（`constants.js::STORAGE_KEY`）：
+7 个命名 localStorage key（`constants.js::STORAGE_KEY`）：
 - `vocab_history` —— 历史测试列表，超 60 条自动裁剪（`MAX_HISTORY_ITEMS`）
 - `vocab_settings` —— 仅 `{ maxUnknown }`
 - `vocab_theme` —— `'dark' | 'light' | 'auto'`
 - `vocab_session` —— 未完成测试的精简快照；首页 `renderResumeButton` 据此显示"继续测试"
 - `vocab_word_stats` —— `{ [idx]: { tested, wrong } }`，加权抽样的依据
+- `vocab_ai_config` —— `{ endpoint, model, apiKey }`，仅由 `ai.js::getConfig` 读取
+- `vocab_reader_articles` —— 阅读训练已生成的文章，按 `{dateKey}/{sessionKey}` 索引
+
+此外还有两类**前缀键**不在 `STORAGE_KEY` 中但会被 `exportAll/importAll` 扫描：`vcbly_ai_*`（AI 详解结果缓存）、`vcbly_examples_*`（例句缓存）。`clearAll` 同样会清除这些前缀键。
 
 `saveSession` 只持久化必要字段（不保存 options/correctIdx，因为 `resumeSession` 会重新生成）。但 `awaitingNext: true` 时要保留"已答错待点下一个"的状态——此时**不**重新出题，而是直接显示释义。
 
@@ -85,13 +91,20 @@ python3 scripts/audio/run_split.py                    # 执行 /tmp/ffmpeg_cmds_
 
 ### 键盘快捷键
 
-`main.js` 的全局 keydown 按面板分派：测试面板用 `1-4` 选答 / `Space|Enter` 下一题；复习面板用 ←→ / `a` `d` 翻页；错词本用 jk/上下选词、ad/左右切换会话、p 播放、Enter/Space 选中词。`isEditableTarget` 防止在 input 中误触。
+`main.js` 的全局 keydown 按面板分派：测试面板用 `1-4` 选答 / `Space|Enter` 下一题；复习面板用 ←→ / `a` `d` 翻页；错词本用 jk/上下选词、ad/左右切换会话、p 播放、Enter/Space 选中词。`isEditableTarget` 防止在 input 中误触。首页搜索框激活时单独处理 ↑↓/Enter/Esc（不走全局分派）。
+
+### 首页搜索与释义遮挡
+
+- **首页搜索**：`main.js` IIFE 把 `handleSearchInput` / `selectSearchResult` 挂到 window，绑定 `#homeSearchInput`。输入中文（含 `一-鿿`）按词条 `d` 匹配，英文按 `w.toLowerCase()` 匹配，最多取 30 条结果；选中后把发音/释义直接展开在结果区，不跳测试。
+- **释义遮挡**：`toggleReviewDef` 在复习面板和错词本详情上切换 `#reviewDef.show`，CSS 用 `filter: blur(5px)` 实现遮挡；按钮 `dataset.blurred` 反映状态供其它逻辑读取（如答题后保持遮挡偏好）。
 
 ## 修改时的关键约束
 
 - 改 `session` 形状 → 同步 4 处：`createEmptySession`、`saveSession` 的 slim、`restoreSession`、`importAll`/`exportAll`。
-- 新增 localStorage key → 加进 `STORAGE_KEY`，并在 `clearAll` 与 `exportAll`/`importAll` 中处理。
+- 新增 localStorage key → 加进 `STORAGE_KEY`，并在 `clearAll` 与 `exportAll`/`importAll` 中处理。若用前缀键家族（如 `vcbly_xxx_*`），需在 `exportAll/importAll/clearAll` 的扫描循环里加上前缀分支。
+- `vocab_reader_articles` 是按 `{dateKey}/{sessionKey}` 嵌套的对象，删除某个错词本场次的话要级联清理对应文章（参考 `deleteReaderArticle`）。
 - 改音频文件命名 `0123_guide.m4a` 形式或 manifest 字段名会同时影响 `data/audio_manifest.js`、`audio.js::getAudioPath`、`scripts/audio/write_review_audio_manifest.py`，以及 `audio-cache.js` 中基于 `AUDIO_MANIFEST_META` 计算的缓存版本——版本不变则旧 Cache 不会失效。
+- `main.js` 把 `Session.*` / `UI.*` / `ai.askAi` / `ui-reader.*` 等模块函数手动桥接到 `window.*` 供 `index.html` 的 inline `onclick` 调用——新增公共动作时必须同步桥接，否则按钮会哑火。
 - 用户面 UI 文案保持中文。代码标识符保持 camelCase。JS/CSS/HTML 缩进为 2 空格。
 - 不引入框架、构建器或 npm 依赖（项目刻意保持零工具链）。
 

@@ -8,7 +8,7 @@ import * as Session from './session.js';
 import { clearAudioCache, playWordAudioFromButton, registerAudioServiceWorker } from './audio.js';
 import { escapeHtml } from './ui-common.js';
 import { askAi, renderMarkdown } from './ai.js';
-import { openReaderWithWords, closeReader, regenReaderArticle, startGenerateReader } from './ui-reader.js';
+import { openReaderWithWords, closeReader, regenReaderArticle, startGenerateReader, startGenerateTranslation, switchReaderTab } from './ui-reader.js';
 import { PANEL } from './constants.js';
 
 // ===== 主题管理 =====
@@ -324,6 +324,8 @@ window.openReaderWithWords = (words, opts) => openReaderWithWords(words, opts);
 window.closeReader = () => closeReader();
 window.regenReaderArticle = () => regenReaderArticle();
 window.startGenerateReader = () => startGenerateReader();
+window.startGenerateTranslation = () => startGenerateTranslation();
+window.switchReaderTab = (tab) => switchReaderTab(tab);
 
 // ===== AI 详解弹窗 + 例句 =====
 let _aiDetailWord = null;

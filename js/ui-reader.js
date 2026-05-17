@@ -1,6 +1,7 @@
 // ========== 阅读训练模块 ==========
-// 将错词组成 AI 生成文章，目标词高亮 + 点击弹窗查看释义。
-// 与错词本的测试场次深度集成：每个场次可生成一篇文章。
+// 阅读 tab：把错词组成 AI 生成英文文章，目标词高亮 + 点击弹窗查看释义。
+// 翻译 tab：对当前已生成的英文文章做整篇中文翻译，供对照学习。
+// 两个 tab 各自独立的 AbortController，切 tab 不打断对方的流式生成。
 
 import { askAi, renderMarkdown } from './ai.js';
 import { escapeHtml } from './ui-common.js';
@@ -8,10 +9,13 @@ import { saveReaderArticle, getReaderArticle } from './storage.js';
 
 // ===== 模块状态 =====
 
-let _readerWords = [];         // [{w, uk, us, d}]
-let _readerCtrl = null;       // AbortController
-let _currentArticle = '';     // 当前文章原始 markdown
-let _articleMeta = null;      // { dateKey, sessionKey } 用于保存
+let _readerWords = [];          // [{w, uk, us, d}]
+let _articleMarkdown = '';      // 阅读 tab 当前英文文章 markdown
+let _translationMarkdown = '';  // 翻译 tab 当前中文译文 markdown
+let _articleMeta = null;        // { dateKey, sessionKey } 用于保存
+let _articleCtrl = null;        // 阅读 tab 的 AbortController
+let _translationCtrl = null;    // 翻译 tab 的 AbortController
+let _activeTab = 'article';     // 'article' | 'translation'
 
 // ===== 公开 API =====
 
@@ -23,16 +27,22 @@ export function openReaderWithWords(words, opts = {}) {
   }
 
   _readerWords = words.map(w => ({ w: w.w, uk: w.uk, us: w.us, d: w.d }));
-  _currentArticle = '';
+  _articleMarkdown = '';
+  _translationMarkdown = '';
   _articleMeta = (opts.dateKey && opts.sessionKey !== undefined)
     ? { dateKey: opts.dateKey, sessionKey: opts.sessionKey }
     : null;
+  _activeTab = 'article';
+
+  if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} _articleCtrl = null; }
+  if (_translationCtrl) { try { _translationCtrl.abort(); } catch {} _translationCtrl = null; }
 
   _openModal({ showBegin: true });
   _setWordCount(words.length);
+  switchReaderTab('article');
 }
 
-/** 用户点击"开始生成"后触发 AI 生成 */
+/** 用户点击"开始生成文章"后触发 AI 生成 */
 export function startGenerateReader() {
   const begin = document.getElementById('readerBegin');
   const loading = document.getElementById('readerLoading');
@@ -41,7 +51,32 @@ export function startGenerateReader() {
   generateReaderArticle();
 }
 
-/** 查看已保存的文章（跳过 AI 生成） */
+/** 用户点击"开始生成翻译"后触发 AI 翻译 */
+export function startGenerateTranslation() {
+  if (!_articleMarkdown) return;
+  generateTranslation();
+}
+
+/** 切换 tab */
+export function switchReaderTab(tab) {
+  if (tab !== 'article' && tab !== 'translation') return;
+  _activeTab = tab;
+
+  const tabArticle = document.getElementById('readerTabArticle');
+  const tabTranslation = document.getElementById('readerTabTranslation');
+  const paneArticle = document.getElementById('readerPaneArticle');
+  const paneTranslation = document.getElementById('readerPaneTranslation');
+
+  if (tabArticle) tabArticle.classList.toggle('active', tab === 'article');
+  if (tabTranslation) tabTranslation.classList.toggle('active', tab === 'translation');
+  if (paneArticle) paneArticle.style.display = tab === 'article' ? '' : 'none';
+  if (paneTranslation) paneTranslation.style.display = tab === 'translation' ? '' : 'none';
+
+  if (tab === 'translation') _syncTranslationPane();
+  _updateRegenBtn();
+}
+
+/** 查看已保存的文章（跳过 AI 生成）。译文若存在则一并预渲染 */
 export function viewReaderArticle(dateKey, sessionKey) {
   const saved = getReaderArticle(dateKey, sessionKey);
   if (!saved) {
@@ -53,22 +88,28 @@ export function viewReaderArticle(dateKey, sessionKey) {
     if (typeof w === 'string') return { w, uk: '', us: '', d: '' };
     return { w: w.w, uk: w.uk || '', us: w.us || '', d: w.d || '' };
   });
-  _currentArticle = saved.markdown || '';
+  _articleMarkdown = saved.markdown || '';
+  _translationMarkdown = saved.translation || '';
   _articleMeta = { dateKey, sessionKey };
+  _activeTab = 'article';
 
   _openModal();
-  if (_currentArticle) {
-    _displayArticle(_currentArticle);
+  if (_articleMarkdown) {
+    _displayArticle(_articleMarkdown);
   }
+  if (_translationMarkdown) {
+    const t = document.getElementById('readerTranslation');
+    if (t) t.innerHTML = renderMarkdown(_translationMarkdown);
+  }
+  switchReaderTab('article');
 }
 
 /** 关闭阅读器 */
 export function closeReader() {
-  if (_readerCtrl) {
-    try { _readerCtrl.abort(); } catch {}
-    _readerCtrl = null;
-  }
+  if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} _articleCtrl = null; }
+  if (_translationCtrl) { try { _translationCtrl.abort(); } catch {} _translationCtrl = null; }
   _articleMeta = null;
+  _activeTab = 'article';
   const modal = document.getElementById('readerModal');
   if (modal) {
     modal.hidden = true;
@@ -78,7 +119,30 @@ export function closeReader() {
   _hidePopup();
 }
 
-/** 打开模态框并重置 UI。showBegin 为 true 时展示"开始生成"按钮而非直接加载 */
+/** 顶栏"换一篇"：按当前 tab 分派 */
+export async function regenReaderArticle() {
+  const btn = document.getElementById('readerRegenBtn');
+
+  if (_activeTab === 'translation') {
+    if (!_articleMarkdown) return;
+    if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+    _translationMarkdown = '';
+    const t = document.getElementById('readerTranslation');
+    if (t) t.innerHTML = '';
+    await generateTranslation();
+    if (btn) { btn.disabled = false; btn.textContent = '换一篇'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+  _articleMarkdown = '';
+  _cascadeClearTranslation();
+  await generateReaderArticle();
+  if (btn) { btn.disabled = false; btn.textContent = '换一篇'; }
+}
+
+// ===== 内部函数 =====
+
 function _openModal({ showBegin } = {}) {
   const modal = document.getElementById('readerModal');
   const article = document.getElementById('readerArticle');
@@ -86,6 +150,10 @@ function _openModal({ showBegin } = {}) {
   const empty = document.getElementById('readerEmpty');
   const begin = document.getElementById('readerBegin');
   const regenBtn = document.getElementById('readerRegenBtn');
+  const transEl = document.getElementById('readerTranslation');
+  const transLoading = document.getElementById('readerTransLoading');
+  const transEmpty = document.getElementById('readerTransEmpty');
+  const transBegin = document.getElementById('readerTransBegin');
   if (!modal || !article || !loading || !empty) return;
 
   article.innerHTML = '';
@@ -94,53 +162,56 @@ function _openModal({ showBegin } = {}) {
   loading.style.display = 'none';
   if (begin) begin.style.display = showBegin ? 'flex' : 'none';
   if (regenBtn) regenBtn.style.display = 'none';
+
+  if (transEl) transEl.innerHTML = '';
+  if (transLoading) transLoading.style.display = 'none';
+  if (transEmpty) transEmpty.style.display = 'none';
+  if (transBegin) transBegin.style.display = 'none';
+
   modal.hidden = false;
   modal.scrollTop = 0;
   document.body.classList.add('modal-open');
 }
 
-/** 显示文章内容（渲染 markdown + 高亮） */
+/** 渲染阅读 tab 的文章 + 高亮目标词 */
 function _displayArticle(markdown) {
   const article = document.getElementById('readerArticle');
   const loading = document.getElementById('readerLoading');
-  const regenBtn = document.getElementById('readerRegenBtn');
   if (!article) return;
 
   if (loading) loading.style.display = 'none';
   article.style.display = '';
   article.innerHTML = renderMarkdown(markdown);
   _highlightWords(article, _readerWords);
-  if (regenBtn) regenBtn.style.display = '';
+  _updateRegenBtn();
 }
 
-/** 生成/重新生成文章 */
-export async function generateReaderArticle() {
+/** 生成/重新生成英文文章（阅读 tab） */
+async function generateReaderArticle() {
   if (_readerWords.length === 0) return;
 
-  // 重置 UI
   const article = document.getElementById('readerArticle');
   const loading = document.getElementById('readerLoading');
   const empty = document.getElementById('readerEmpty');
   const regenBtn = document.getElementById('readerRegenBtn');
   if (!article || !loading) return;
 
-  // 取消上一次请求
-  if (_readerCtrl) {
-    try { _readerCtrl.abort(); } catch {}
+  if (_articleCtrl) {
+    try { _articleCtrl.abort(); } catch {}
   }
   _hidePopup();
 
   article.innerHTML = '';
   empty.style.display = 'none';
-  regenBtn.style.display = 'none';
+  if (regenBtn) regenBtn.style.display = 'none';
   loading.style.display = 'flex';
 
-  _readerCtrl = new AbortController();
-  const ctrl = _readerCtrl;
+  _articleCtrl = new AbortController();
+  const ctrl = _articleCtrl;
   let firstChunk = true;
 
   try {
-    _currentArticle = await askAi(
+    _articleMarkdown = await askAi(
       _readerWords[0].w,
       {},
       'explain',
@@ -151,10 +222,10 @@ export async function generateReaderArticle() {
           firstChunk = false;
           loading.style.display = 'none';
           article.style.display = '';
-          regenBtn.style.display = '';
+          _updateRegenBtn();
         }
-        _currentArticle += chunk;
-        article.innerHTML = renderMarkdown(_currentArticle);
+        _articleMarkdown += chunk;
+        article.innerHTML = renderMarkdown(_articleMarkdown);
         _highlightWords(article, _readerWords);
         article.scrollTop = article.scrollHeight;
       },
@@ -164,48 +235,165 @@ export async function generateReaderArticle() {
   } catch (err) {
     loading.style.display = 'none';
     if (ctrl.signal.aborted) {
-      // 超时或被用户取消，静默清理
-      _readerCtrl = null;
+      _articleCtrl = null;
       return;
     }
     console.error('生成阅读文章失败', err);
     article.innerHTML = '';
     empty.style.display = '';
     empty.innerHTML = `<p>😥 文章生成失败</p><p style="font-size:0.8rem;color:var(--text-muted)">${escapeHtml(err.message || '未知错误')}</p>`;
-    regenBtn.style.display = 'none';
-    _readerCtrl = null;
+    if (regenBtn) regenBtn.style.display = 'none';
+    _articleCtrl = null;
     return;
   }
 
-  // 生成完成后确保渲染完整（非流式后端兼容）
-  if (_currentArticle && !article.innerHTML) {
-    _displayArticle(_currentArticle);
+  if (_articleMarkdown && !article.innerHTML) {
+    _displayArticle(_articleMarkdown);
   }
 
-  // 自动保存到本地
-  if (_currentArticle && _articleMeta) {
+  if (_articleMarkdown && _articleMeta) {
     _saveCurrent();
   }
 
-  _readerCtrl = null;
+  _articleCtrl = null;
+  _updateRegenBtn();
 }
 
-/** 换一篇：同组词重新生成 */
-export async function regenReaderArticle() {
+/** 生成/重新生成中文译文（翻译 tab） */
+async function generateTranslation() {
+  if (!_articleMarkdown) return;
+
+  const transEl = document.getElementById('readerTranslation');
+  const loading = document.getElementById('readerTransLoading');
+  const empty = document.getElementById('readerTransEmpty');
+  const begin = document.getElementById('readerTransBegin');
+  if (!transEl || !loading) return;
+
+  if (_translationCtrl) {
+    try { _translationCtrl.abort(); } catch {}
+  }
+
+  transEl.innerHTML = '';
+  if (empty) empty.style.display = 'none';
+  if (begin) begin.style.display = 'none';
+  loading.style.display = 'flex';
+
+  _translationCtrl = new AbortController();
+  const ctrl = _translationCtrl;
+  let firstChunk = true;
+
+  try {
+    _translationMarkdown = await askAi(
+      _readerWords[0]?.w || 'translate',
+      {},
+      'explain',
+      _buildTranslationQuestion(),
+      (chunk) => {
+        if (ctrl.signal.aborted) return;
+        if (firstChunk) {
+          firstChunk = false;
+          loading.style.display = 'none';
+          _updateRegenBtn();
+        }
+        _translationMarkdown += chunk;
+        transEl.innerHTML = renderMarkdown(_translationMarkdown);
+        transEl.scrollTop = transEl.scrollHeight;
+      },
+      _buildTranslationSystemPrompt(),
+      ctrl.signal
+    );
+  } catch (err) {
+    loading.style.display = 'none';
+    if (ctrl.signal.aborted) {
+      _translationCtrl = null;
+      return;
+    }
+    console.error('生成翻译失败', err);
+    transEl.innerHTML = '';
+    if (empty) {
+      empty.style.display = '';
+      empty.innerHTML = `<p>😥 翻译生成失败</p><p style="font-size:0.8rem;color:var(--text-muted)">${escapeHtml(err.message || '未知错误')}</p>`;
+    }
+    _translationCtrl = null;
+    return;
+  }
+
+  if (_translationMarkdown && !transEl.innerHTML) {
+    transEl.innerHTML = renderMarkdown(_translationMarkdown);
+  }
+
+  if (_translationMarkdown && _articleMeta) {
+    _saveCurrent();
+  }
+
+  _translationCtrl = null;
+  _updateRegenBtn();
+}
+
+/** 切到翻译 tab 时，根据当前状态同步 pane（无文章 / 已有译文 / 待生成） */
+function _syncTranslationPane() {
+  const begin = document.getElementById('readerTransBegin');
+  const empty = document.getElementById('readerTransEmpty');
+  const transEl = document.getElementById('readerTranslation');
+  const loading = document.getElementById('readerTransLoading');
+
+  if (_translationCtrl) return; // 流式生成中，让 onChunk 自行管理 UI
+
+  if (!_articleMarkdown) {
+    if (begin) begin.style.display = 'none';
+    if (loading) loading.style.display = 'none';
+    if (transEl) transEl.innerHTML = '';
+    if (empty) {
+      empty.style.display = '';
+      empty.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem">请先在「阅读」标签生成文章。</p>';
+    }
+    return;
+  }
+
+  if (_translationMarkdown) {
+    if (transEl && !transEl.innerHTML) {
+      transEl.innerHTML = renderMarkdown(_translationMarkdown);
+    }
+    if (begin) begin.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    if (loading) loading.style.display = 'none';
+  } else {
+    if (begin) begin.style.display = 'flex';
+    if (empty) empty.style.display = 'none';
+    if (loading) loading.style.display = 'none';
+    if (transEl) transEl.innerHTML = '';
+  }
+}
+
+/** 文章重生时级联清空翻译，并提示用户 */
+function _cascadeClearTranslation() {
+  if (_translationCtrl) {
+    try { _translationCtrl.abort(); } catch {}
+    _translationCtrl = null;
+  }
+  _translationMarkdown = '';
+  const transEl = document.getElementById('readerTranslation');
+  if (transEl) transEl.innerHTML = '';
+  const begin = document.getElementById('readerTransBegin');
+  const loading = document.getElementById('readerTransLoading');
+  const empty = document.getElementById('readerTransEmpty');
+  if (loading) loading.style.display = 'none';
+  if (empty) {
+    empty.style.display = '';
+    empty.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem">文章已更新，请重新生成翻译。</p>';
+  }
+  if (begin) begin.style.display = 'flex';
+}
+
+/** 顶栏"换一篇"按钮显隐：当前 tab 有内容才出现 */
+function _updateRegenBtn() {
   const btn = document.getElementById('readerRegenBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = '生成中…';
-  }
-  _currentArticle = '';
-  await generateReaderArticle();
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = '换一篇';
-  }
+  if (!btn) return;
+  const visible = _activeTab === 'article'
+    ? !!_articleMarkdown
+    : !!_translationMarkdown;
+  btn.style.display = visible ? '' : 'none';
 }
-
-// ===== 内部函数 =====
 
 function _buildSystemPrompt() {
   return '你是一个英语教学专家，擅长根据词汇表编写适合英语学习者的阅读文章。'
@@ -226,7 +414,17 @@ function _buildQuestion(words) {
   return `请根据以上系统指令，用以下全部${words.length}个单词写一篇文章：\n\n${list}`;
 }
 
-/** 设置词数提示 */
+function _buildTranslationSystemPrompt() {
+  return '你是一名英译中翻译专家。请将用户提供的英文文章逐段翻译为自然流畅的简体中文，'
+    + '保留原文的 markdown 结构（标题、段落、列表、强调等）。'
+    + '直译优先，必要时调整语序以符合中文表达习惯。'
+    + '只输出译文，不要附加解释或英文原文。';
+}
+
+function _buildTranslationQuestion() {
+  return `请将以下文章翻译为中文（保持 markdown 格式）：\n\n${_articleMarkdown}`;
+}
+
 function _setWordCount(n) {
   const el = document.getElementById('readerWordCount');
   if (el) el.textContent = n;
@@ -236,10 +434,8 @@ function _setWordCount(n) {
 function _highlightWords(container, words) {
   if (!container || words.length === 0) return;
 
-  // 收集目标词及其屈折变体正则
   const targets = words.map(w => {
     const stem = _escapeRegex(w.w);
-    // 匹配词根 + 常见屈折后缀（允许首字母大小写）
     const suffixes = '(?:s|es|ed|ing|ly|er|est|\'s|s\')?';
     return {
       word: w.w,
@@ -250,12 +446,11 @@ function _highlightWords(container, words) {
     };
   });
 
-  const used = new Set(); // 已高亮的词（首个出现）
+  const used = new Set();
   const walker = document.createTreeWalker(
     container,
     NodeFilter.SHOW_TEXT,
     { acceptNode: (n) => {
-      // 跳过代码块、链接、已高亮词内部
       const parent = n.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
       const tag = parent.tagName;
@@ -274,7 +469,6 @@ function _highlightWords(container, words) {
 
       const matchedText = match[0];
       const idx = match.index;
-      // splitText 创建三个节点：before / matched / after
       const afterNode = node.splitText(idx);
       const targetNode = afterNode.splitText(matchedText.length);
 
@@ -288,7 +482,7 @@ function _highlightWords(container, words) {
       afterNode.replaceWith(span);
 
       used.add(t.word.toLowerCase());
-      break; // 当前文本节点只处理第一个匹配词
+      break;
     }
   }
 }
@@ -297,12 +491,15 @@ function _escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** 保存当前文章到 localStorage */
+/** 保存当前条目（阅读+翻译合并写入）到 localStorage */
 function _saveCurrent() {
-  if (!_articleMeta || !_currentArticle) return;
+  if (!_articleMeta || !_articleMarkdown) return;
+  const existing = getReaderArticle(_articleMeta.dateKey, _articleMeta.sessionKey) || {};
   saveReaderArticle(_articleMeta.dateKey, _articleMeta.sessionKey, {
+    ...existing,
     words: _readerWords.map(w => ({ w: w.w, uk: w.uk, us: w.us, d: w.d })),
-    markdown: _currentArticle,
+    markdown: _articleMarkdown,
+    translation: _translationMarkdown || undefined,
     generatedAt: new Date().toISOString(),
   });
 }
@@ -326,7 +523,6 @@ function _showPopup(w, def, uk, us, event) {
     <div class="rp-def">${escapeHtml(def)}</div>
   `;
 
-  // 关闭按钮事件
   popup.querySelector('.rp-close').addEventListener('click', (e) => {
     e.stopPropagation();
     _hidePopup();
@@ -337,8 +533,6 @@ function _showPopup(w, def, uk, us, event) {
   const isMobile = window.innerWidth <= 640;
 
   if (!isMobile) {
-    // 移动端：CSS 媒体查询处理为底部固定浮窗，JS 不做定位
-    // 桌面端：优先在点击词下方，溢出则翻到上方
     const rect = event.target.getBoundingClientRect();
     const popupH = popup.offsetHeight;
     const popupW = popup.offsetWidth;
@@ -381,7 +575,6 @@ function _showEmpty(msg) {
 document.addEventListener('click', (e) => {
   const popup = document.getElementById('readerPopup');
   if (!popup) return;
-  // 点击浮窗内部或目标词 → 不关闭
   if (popup.contains(e.target)) return;
   if (e.target.classList.contains('rw-target')) return;
   if (e.target.closest('.rp-close')) return;
@@ -389,7 +582,6 @@ document.addEventListener('click', (e) => {
 }, true);
 
 document.addEventListener('scroll', () => {
-  // 移动端浮窗固定在底部，无需在滚动时关闭
   if (window.innerWidth <= 640) return;
   _hidePopup();
 }, true);
@@ -405,7 +597,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// 委托点击目标词 → 弹窗
 document.addEventListener('click', (e) => {
   const target = e.target.closest('.rw-target');
   if (!target) return;

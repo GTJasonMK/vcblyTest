@@ -6,11 +6,17 @@
   /* 顶栏将用 sticky 定位，dialog 本身用相对定位做参照 */
 }
 
-/* ---- 顶栏（阅读时始终可见） ---- */
-.reader-topbar {
+/* ---- sticky 头部（topbar + tabs 一起置顶） ---- */
+.reader-sticky-head {
   position: sticky;
   top: 0;
   z-index: 2;
+  background: var(--card-bg);
+  flex: 0 0 auto;
+}
+
+/* ---- 顶栏（阅读时始终可见） ---- */
+.reader-topbar {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -31,6 +37,18 @@
 .reader-topbar .btn-sm {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* ---- tab 条 ---- */
+.reader-tabs {
+  padding: 0 4px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* ---- tab pane（切换淡入） ---- */
+.reader-tab-pane {
+  animation: panelIn 0.3s ease;
 }
 
 /* ---- 开始生成（初始状态） ---- */
