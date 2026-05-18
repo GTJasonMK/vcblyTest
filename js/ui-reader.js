@@ -593,18 +593,20 @@ document.addEventListener('click', (e) => {
   if (w) _showPopup(w, def, uk, us, e);
 });
 
-// ===== 移动端：左右滑动切 tab =====
-// 仅在 ≤640px 且 touch 起点落在 reader 的 pane 内时响应；
-// 锁主方向避免劫持垂直滚动；阈值 50px / 800ms / |dx|>|dy|。
+// ===== 移动端：左右滑动切 tab（跟手平移 + snap） =====
+// 仅在 ≤640px、触点落在 reader pane 内时启用；
+// touchmove 锁主方向后实时 translateX 当前 pane；
+// touchend 按距离/速度判定 snap-out 或回弹；
+// 越界方向（无下一 tab 可去）给 1/4 阻尼。
 
 (() => {
-  const SWIPE_DIST = 50;
-  const SWIPE_MAX_MS = 800;
   const LOCK_AXIS_AT = 8;
+  const SNAP_MS = 220;
 
   let startX = 0, startY = 0, startT = 0;
   let tracking = false;
   let horizontal = null; // null | true | false
+  let dragPane = null;
 
   function inPane(target) {
     const modal = document.getElementById('readerModal');
@@ -612,6 +614,40 @@ document.addEventListener('click', (e) => {
     const a = document.getElementById('readerPaneArticle');
     const b = document.getElementById('readerPaneTranslation');
     return (a && a.contains(target)) || (b && b.contains(target));
+  }
+
+  function _currentPaneEl() {
+    return document.getElementById(
+      _activeTab === 'translation' ? 'readerPaneTranslation' : 'readerPaneArticle'
+    );
+  }
+
+  function _canSwipeTo(dir) {
+    if (dir === 'left') return _activeTab === 'article';
+    if (dir === 'right') return _activeTab === 'translation';
+    return false;
+  }
+
+  function _resetPane(pane) {
+    pane.style.transition = '';
+    pane.style.transform = '';
+  }
+
+  function _cancelDrag(pane) {
+    pane.style.transition = `transform ${SNAP_MS}ms ease`;
+    pane.style.transform = '';
+    setTimeout(() => _resetPane(pane), SNAP_MS + 20);
+  }
+
+  function _completeDrag(pane, dir) {
+    const offset = dir === 'left' ? '-100%' : '100%';
+    pane.style.transition = `transform ${SNAP_MS}ms ease`;
+    pane.style.transform = `translateX(${offset})`;
+    const targetTab = dir === 'left' ? 'translation' : 'article';
+    setTimeout(() => {
+      _resetPane(pane);
+      _swipeToTab(targetTab, dir);
+    }, SNAP_MS);
   }
 
   document.addEventListener('touchstart', (e) => {
@@ -624,34 +660,55 @@ document.addEventListener('click', (e) => {
     startT = Date.now();
     tracking = true;
     horizontal = null;
+    dragPane = null;
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
-    if (!tracking || horizontal !== null) return;
+    if (!tracking) return;
     const t = e.touches[0];
     const dx = t.clientX - startX;
     const dy = t.clientY - startY;
-    if (Math.abs(dx) > LOCK_AXIS_AT || Math.abs(dy) > LOCK_AXIS_AT) {
+    if (horizontal === null) {
+      if (Math.abs(dx) < LOCK_AXIS_AT && Math.abs(dy) < LOCK_AXIS_AT) return;
       horizontal = Math.abs(dx) > Math.abs(dy);
+      if (horizontal) {
+        dragPane = _currentPaneEl();
+        if (dragPane) dragPane.style.transition = 'none';
+      }
+      return;
     }
+    if (!horizontal || !dragPane) return;
+    const dir = dx < 0 ? 'left' : 'right';
+    const damped = _canSwipeTo(dir) ? dx : dx * 0.25;
+    dragPane.style.transform = `translateX(${damped}px)`;
   }, { passive: true });
 
   document.addEventListener('touchend', (e) => {
     if (!tracking) return;
     tracking = false;
-    if (horizontal !== true) return;
+    if (!horizontal || !dragPane) return;
+    const pane = dragPane;
+    dragPane = null;
     const t = e.changedTouches[0];
     const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-    if (Date.now() - startT > SWIPE_MAX_MS) return;
-    if (Math.abs(dx) < SWIPE_DIST) return;
-    if (Math.abs(dy) > Math.abs(dx)) return;
-
-    if (dx < 0 && _activeTab === 'article') _swipeToTab('translation', 'left');
-    else if (dx > 0 && _activeTab === 'translation') _swipeToTab('article', 'right');
+    const dt = Date.now() - startT;
+    const threshold = Math.min(window.innerWidth * 0.25, 100);
+    const fling = dt < 250 && Math.abs(dx) > 30;
+    const passed = Math.abs(dx) > threshold || fling;
+    const dir = dx < 0 ? 'left' : 'right';
+    if (passed && _canSwipeTo(dir)) {
+      _completeDrag(pane, dir);
+    } else {
+      _cancelDrag(pane);
+    }
   });
 
-  document.addEventListener('touchcancel', () => { tracking = false; });
+  document.addEventListener('touchcancel', () => {
+    if (dragPane) _cancelDrag(dragPane);
+    dragPane = null;
+    tracking = false;
+    horizontal = null;
+  });
 })();
 
 /** 滑动触发的 tab 切换：给目标 pane 短暂加上方向动画 class，再走常规 switchReaderTab */
