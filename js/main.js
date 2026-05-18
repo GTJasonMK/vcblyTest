@@ -770,6 +770,23 @@ function isEditableTarget(target) {
 }
 
 document.addEventListener('keydown', e => {
+  // reader 模态：←/→ 切 tab、Esc 关闭。前置以避开 isEditableTarget 拦截
+  // （否则首页搜索框等 input 残留焦点时 ←/→ 会被一刀切回）
+  const readerModal = document.getElementById('readerModal');
+  if (readerModal && !readerModal.hidden) {
+    if (e.key === 'Escape') { closeReader(); return; }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+        && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const onArticle = document.getElementById('readerTabArticle')?.classList.contains('active');
+      const target = e.key === 'ArrowRight' ? 'translation' : 'article';
+      if ((target === 'translation' && onArticle) || (target === 'article' && !onArticle)) {
+        switchReaderTab(target);
+        e.preventDefault();
+      }
+    }
+    return;
+  }
+
   if (isEditableTarget(e.target)) return;
 
   const badgeModal = document.getElementById('badgeModal');
@@ -780,11 +797,6 @@ document.addEventListener('keydown', e => {
   const historyModal = document.getElementById('historyModal');
   if (historyModal && !historyModal.hidden) {
     if (e.key === 'Escape') UI.closeHistoryModal();
-    return;
-  }
-  const readerModal = document.getElementById('readerModal');
-  if (readerModal && !readerModal.hidden) {
-    if (e.key === 'Escape') closeReader();
     return;
   }
 

@@ -46,22 +46,25 @@
   border-bottom: 1px solid var(--border-light);
 }
 
-/* ---- tab pane（切换淡入） ---- */
+/* ---- pane 翻页：stage 是固定裁切窗口，track 是横向胶卷 ---- */
+.reader-pane-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.reader-pane-track {
+  display: flex;
+  width: 100%;
+  transform: translateX(0);
+  transition: transform 0.28s ease;
+  /* 跟手期间 JS 临时移除 transition 让指尖贴合 */
+}
+.reader-pane-track.dragging { transition: none; }
 .reader-tab-pane {
-  animation: panelIn 0.3s ease;
-}
-
-/* 移动端左右滑动切换 tab 的方向感动画（specificity 高于 panelIn 默认规则）。
- * 100% 偏移与跟手 snap-out 终止位置一致，两段动画无缝衔接。 */
-.reader-tab-pane.swipe-in-right { animation: readerSwipeInRight 0.22s ease; }
-.reader-tab-pane.swipe-in-left  { animation: readerSwipeInLeft  0.22s ease; }
-@keyframes readerSwipeInRight {
-  from { transform: translateX(100%);  opacity: 0.3; }
-  to   { transform: translateX(0);     opacity: 1; }
-}
-@keyframes readerSwipeInLeft {
-  from { transform: translateX(-100%); opacity: 0.3; }
-  to   { transform: translateX(0);     opacity: 1; }
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
 }
 
 /* ---- 开始生成（初始状态） ---- */

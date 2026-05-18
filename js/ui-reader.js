@@ -57,20 +57,22 @@ export function startGenerateTranslation() {
   generateTranslation();
 }
 
-/** 切换 tab */
+/** 切换 tab — 平移 track（两 pane 始终 mounted、并排在固定 stage 窗口内），保持 transition 平滑 */
 export function switchReaderTab(tab) {
   if (tab !== 'article' && tab !== 'translation') return;
   _activeTab = tab;
+  _hidePopup();
 
   const tabArticle = document.getElementById('readerTabArticle');
   const tabTranslation = document.getElementById('readerTabTranslation');
-  const paneArticle = document.getElementById('readerPaneArticle');
-  const paneTranslation = document.getElementById('readerPaneTranslation');
+  const track = document.getElementById('readerPaneTrack');
 
   if (tabArticle) tabArticle.classList.toggle('active', tab === 'article');
   if (tabTranslation) tabTranslation.classList.toggle('active', tab === 'translation');
-  if (paneArticle) paneArticle.style.display = tab === 'article' ? '' : 'none';
-  if (paneTranslation) paneTranslation.style.display = tab === 'translation' ? '' : 'none';
+  if (track) {
+    track.classList.remove('dragging');
+    track.style.transform = tab === 'article' ? 'translateX(0)' : 'translateX(-100%)';
+  }
 
   if (tab === 'translation') _syncTranslationPane();
   _updateRegenBtn();
@@ -97,10 +99,7 @@ export function viewReaderArticle(dateKey, sessionKey) {
   if (_articleMarkdown) {
     _displayArticle(_articleMarkdown);
   }
-  if (_translationMarkdown) {
-    const t = document.getElementById('readerTranslation');
-    if (t) t.innerHTML = renderMarkdown(_translationMarkdown);
-  }
+  // 翻译预渲染由 _openModal 内的 _syncTranslationPane 自动处理
   switchReaderTab('article');
 }
 
@@ -151,10 +150,6 @@ function _openModal({ showBegin } = {}) {
   const empty = document.getElementById('readerEmpty');
   const begin = document.getElementById('readerBegin');
   const regenBtn = document.getElementById('readerRegenBtn');
-  const transEl = document.getElementById('readerTranslation');
-  const transLoading = document.getElementById('readerTransLoading');
-  const transEmpty = document.getElementById('readerTransEmpty');
-  const transBegin = document.getElementById('readerTransBegin');
   if (!modal || !article || !loading || !empty) return;
 
   article.innerHTML = '';
@@ -164,14 +159,13 @@ function _openModal({ showBegin } = {}) {
   if (begin) begin.style.display = showBegin ? 'flex' : 'none';
   if (regenBtn) regenBtn.style.display = 'none';
 
-  if (transEl) transEl.innerHTML = '';
-  if (transLoading) transLoading.style.display = 'none';
-  if (transEmpty) transEmpty.style.display = 'none';
-  if (transBegin) transBegin.style.display = 'none';
-
   modal.hidden = false;
   modal.scrollTop = 0;
   document.body.classList.add('modal-open');
+
+  // 翻译 pane 状态统一由 _syncTranslationPane 管理（不再在这里硬隐藏 transBegin，
+  // 否则 swipe 翻到 translation pane 但 switchReaderTab 还没触发时会看到空白页）
+  _syncTranslationPane();
 }
 
 /** 渲染阅读 tab 的文章 + 高亮目标词 */
@@ -282,6 +276,8 @@ async function generateReaderArticle() {
   if (!full) _articleMarkdown = '';
   if (full && _articleMeta) _saveCurrent();
   _updateRegenBtn();
+  // 用户可能在 article 流式期间已切到翻译 tab，文章完成后让翻译 pane 露出生成按钮
+  if (_activeTab === 'translation') _syncTranslationPane();
 }
 
 /** 生成/重新生成中文译文（翻译 tab） */
@@ -333,9 +329,8 @@ function _syncTranslationPane() {
   }
 
   if (_translationMarkdown) {
-    if (transEl && !transEl.innerHTML) {
-      transEl.innerHTML = renderMarkdown(_translationMarkdown);
-    }
+    // 强制重渲染：避免 modal 关闭再打开后看到上一篇的 stale 译文
+    if (transEl) transEl.innerHTML = renderMarkdown(_translationMarkdown);
     if (begin) begin.style.display = 'none';
     if (empty) empty.style.display = 'none';
     if (loading) loading.style.display = 'none';
@@ -382,11 +377,14 @@ function _updateRegenBtn() {
 }
 
 function _buildSystemPrompt() {
-  return '你是一个英语教学专家，擅长根据词汇表编写适合英语学习者的阅读文章。'
-    + '请用给出的全部单词写一篇约250-400词的英语文章。'
-    + '必须使用列表中的每一个单词（允许屈折变化如复数、过去式、进行时等）。'
-    + '选一个能自然容纳这些词的主题，使文章读起来自然流畅、不牵强。'
-    + '只输出文章正文（markdown 格式：标题+段落），不要附加任何其他内容。';
+  return '你是一个英语教学专家，擅长根据词汇表编写适合英语学习者的阅读文章。\n'
+    + '严格要求：\n'
+    + '1. 用给出的全部单词写一篇约 250-400 词的英语短文。\n'
+    + '2. 必须使用列表中的每一个单词（允许屈折变化，如复数、过去式、进行时、形容词形式等）。\n'
+    + '3. **绝对禁止**把目标词在段首罗列、加粗、用反引号包裹、加方括号、或以任何方式特殊标注；让目标词像普通词汇一样自然地融入句子里。\n'
+    + '4. **绝对禁止**在文中或末尾附加单词表、词性提示、注释、或任何形式的元说明。\n'
+    + '5. 选择能自然容纳所有词的主题，使文章读起来流畅、有连贯叙事或论述，不牵强堆砌。\n'
+    + '6. 只输出文章正文（markdown 格式：一级标题 + 多个自然段），不要在前后附加任何解释。';
 }
 
 function _buildQuestion(words) {
@@ -450,11 +448,13 @@ function _highlightWords(container, words) {
     const node = walker.currentNode;
     for (const t of targets) {
       if (used.has(t.word.toLowerCase())) continue;
-      const match = node.textContent.match(t.regex);
-      if (!match) continue;
+      // 用 exec 而非 match：/g 标志下 String.match 不返回 index，会让 splitText 退化成 splitText(0) 吃掉前导字符
+      t.regex.lastIndex = 0;
+      const m = t.regex.exec(node.textContent);
+      if (!m) continue;
 
-      const matchedText = match[0];
-      const idx = match.index;
+      const matchedText = m[0];
+      const idx = m.index;
       const afterNode = node.splitText(idx);
       const targetNode = afterNode.splitText(matchedText.length);
 
@@ -593,33 +593,26 @@ document.addEventListener('click', (e) => {
   if (w) _showPopup(w, def, uk, us, e);
 });
 
-// ===== 移动端：左右滑动切 tab（跟手平移 + snap） =====
-// 仅在 ≤640px、触点落在 reader pane 内时启用；
-// touchmove 锁主方向后实时 translateX 当前 pane；
-// touchend 按距离/速度判定 snap-out 或回弹；
-// 越界方向（无下一 tab 可去）给 1/4 阻尼。
+// ===== 移动端：左右滑动切 tab（双 pane 同时跟手 + snap） =====
+// 两 pane 在 .reader-pane-stage 内并排始终 mounted；
+// 跟手时整体 translateX(base + dx)，松手按距离/速度 snap；
+// 越界方向（无下一 tab）给 1/4 阻尼，制造橡皮筋反馈。
 
 (() => {
   const LOCK_AXIS_AT = 8;
-  const SNAP_MS = 220;
 
   let startX = 0, startY = 0, startT = 0;
   let tracking = false;
-  let horizontal = null; // null | true | false
-  let dragPane = null;
+  let horizontal = null;
+  let trackEl = null;
+  let trackWidth = 0;
 
-  function inPane(target) {
+  function _inPane(target) {
     const modal = document.getElementById('readerModal');
     if (!modal || modal.hidden) return false;
     const a = document.getElementById('readerPaneArticle');
     const b = document.getElementById('readerPaneTranslation');
     return (a && a.contains(target)) || (b && b.contains(target));
-  }
-
-  function _currentPaneEl() {
-    return document.getElementById(
-      _activeTab === 'translation' ? 'readerPaneTranslation' : 'readerPaneArticle'
-    );
   }
 
   function _canSwipeTo(dir) {
@@ -628,39 +621,27 @@ document.addEventListener('click', (e) => {
     return false;
   }
 
-  function _resetPane(pane) {
-    pane.style.transition = '';
-    pane.style.transform = '';
+  function _baseOffsetPx() {
+    return _activeTab === 'translation' ? -trackWidth : 0;
   }
 
-  function _cancelDrag(pane) {
-    pane.style.transition = `transform ${SNAP_MS}ms ease`;
-    pane.style.transform = '';
-    setTimeout(() => _resetPane(pane), SNAP_MS + 20);
-  }
-
-  function _completeDrag(pane, dir) {
-    const offset = dir === 'left' ? '-100%' : '100%';
-    pane.style.transition = `transform ${SNAP_MS}ms ease`;
-    pane.style.transform = `translateX(${offset})`;
-    const targetTab = dir === 'left' ? 'translation' : 'article';
-    setTimeout(() => {
-      _resetPane(pane);
-      _swipeToTab(targetTab, dir);
-    }, SNAP_MS);
+  function _snapToActive() {
+    if (!trackEl) return;
+    trackEl.classList.remove('dragging');
+    trackEl.style.transform = _activeTab === 'translation' ? 'translateX(-100%)' : 'translateX(0)';
   }
 
   document.addEventListener('touchstart', (e) => {
     if (window.innerWidth > 640) return;
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
-    if (!inPane(t.target)) return;
+    if (!_inPane(t.target)) return;
     startX = t.clientX;
     startY = t.clientY;
     startT = Date.now();
     tracking = true;
     horizontal = null;
-    dragPane = null;
+    trackEl = null;
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
@@ -672,56 +653,46 @@ document.addEventListener('click', (e) => {
       if (Math.abs(dx) < LOCK_AXIS_AT && Math.abs(dy) < LOCK_AXIS_AT) return;
       horizontal = Math.abs(dx) > Math.abs(dy);
       if (horizontal) {
-        dragPane = _currentPaneEl();
-        if (dragPane) dragPane.style.transition = 'none';
+        trackEl = document.getElementById('readerPaneTrack');
+        if (trackEl) {
+          trackWidth = trackEl.getBoundingClientRect().width || window.innerWidth;
+          trackEl.classList.add('dragging');
+        }
       }
       return;
     }
-    if (!horizontal || !dragPane) return;
+    if (!horizontal || !trackEl) return;
     const dir = dx < 0 ? 'left' : 'right';
     const damped = _canSwipeTo(dir) ? dx : dx * 0.25;
-    dragPane.style.transform = `translateX(${damped}px)`;
+    trackEl.style.transform = `translateX(${_baseOffsetPx() + damped}px)`;
   }, { passive: true });
 
   document.addEventListener('touchend', (e) => {
     if (!tracking) return;
     tracking = false;
-    if (!horizontal || !dragPane) return;
-    const pane = dragPane;
-    dragPane = null;
+    if (!horizontal || !trackEl) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - startX;
     const dt = Date.now() - startT;
-    const threshold = Math.min(window.innerWidth * 0.25, 100);
+    const threshold = Math.min(trackWidth * 0.25, 120);
     const fling = dt < 250 && Math.abs(dx) > 30;
     const passed = Math.abs(dx) > threshold || fling;
     const dir = dx < 0 ? 'left' : 'right';
+
+    trackEl.classList.remove('dragging');
+
     if (passed && _canSwipeTo(dir)) {
-      _completeDrag(pane, dir);
+      switchReaderTab(dir === 'left' ? 'translation' : 'article');
     } else {
-      _cancelDrag(pane);
+      _snapToActive();
     }
+    trackEl = null;
   });
 
   document.addEventListener('touchcancel', () => {
-    if (dragPane) _cancelDrag(dragPane);
-    dragPane = null;
+    if (trackEl) _snapToActive();
+    trackEl = null;
     tracking = false;
     horizontal = null;
   });
 })();
-
-/** 滑动触发的 tab 切换：给目标 pane 短暂加上方向动画 class，再走常规 switchReaderTab */
-function _swipeToTab(tab, fromDir) {
-  const paneId = tab === 'translation' ? 'readerPaneTranslation' : 'readerPaneArticle';
-  const pane = document.getElementById(paneId);
-  if (pane) {
-    pane.classList.remove('swipe-in-right', 'swipe-in-left');
-    const cls = fromDir === 'left' ? 'swipe-in-right' : 'swipe-in-left';
-    pane.classList.add(cls);
-    pane.addEventListener('animationend', () => {
-      pane.classList.remove(cls);
-    }, { once: true });
-  }
-  switchReaderTab(tab);
-}

@@ -522,32 +522,37 @@
         </div>
       </div>
 
-      <!-- 阅读 tab -->
-      <div class="reader-tab-pane" id="readerPaneArticle">
-        <div class="reader-begin" id="readerBegin" style="display:none">
-          <p class="reader-begin-hint">共 <span id="readerWordCount">0</span> 个错词</p>
-          <button class="btn btn-accent" onclick="startGenerateReader()">✨ 开始生成文章</button>
-        </div>
-        <div class="reader-loading" id="readerLoading" style="display:none">
-          <div class="reader-loading-spinner"></div>
-          <div class="reader-loading-text" id="readerLoadingText">AI 正在生成文章…</div>
-        </div>
-        <div class="reader-article markdown-body" id="readerArticle"></div>
-        <div class="reader-empty" id="readerEmpty" style="display:none"></div>
-      </div>
+      <!-- stage 是固定裁切窗口；track 是横向胶卷，transform 由它承担 -->
+      <div class="reader-pane-stage" id="readerPaneStage">
+        <div class="reader-pane-track" id="readerPaneTrack">
+          <!-- 阅读 tab -->
+          <div class="reader-tab-pane" id="readerPaneArticle">
+            <div class="reader-begin" id="readerBegin" style="display:none">
+              <p class="reader-begin-hint">共 <span id="readerWordCount">0</span> 个错词</p>
+              <button class="btn btn-accent" onclick="startGenerateReader()">✨ 开始生成文章</button>
+            </div>
+            <div class="reader-loading" id="readerLoading" style="display:none">
+              <div class="reader-loading-spinner"></div>
+              <div class="reader-loading-text" id="readerLoadingText">AI 正在生成文章…</div>
+            </div>
+            <div class="reader-article markdown-body" id="readerArticle"></div>
+            <div class="reader-empty" id="readerEmpty" style="display:none"></div>
+          </div>
 
-      <!-- 翻译 tab -->
-      <div class="reader-tab-pane" id="readerPaneTranslation" style="display:none">
-        <div class="reader-begin" id="readerTransBegin" style="display:none">
-          <p class="reader-begin-hint" id="readerTransHint">为当前文章生成中文翻译</p>
-          <button class="btn btn-accent" id="readerTransBeginBtn" onclick="startGenerateTranslation()">✨ 开始生成翻译</button>
+          <!-- 翻译 tab -->
+          <div class="reader-tab-pane" id="readerPaneTranslation">
+            <div class="reader-begin" id="readerTransBegin" style="display:none">
+              <p class="reader-begin-hint" id="readerTransHint">为当前文章生成中文翻译</p>
+              <button class="btn btn-accent" id="readerTransBeginBtn" onclick="startGenerateTranslation()">✨ 开始生成翻译</button>
+            </div>
+            <div class="reader-loading" id="readerTransLoading" style="display:none">
+              <div class="reader-loading-spinner"></div>
+              <div class="reader-loading-text">AI 正在翻译…</div>
+            </div>
+            <div class="reader-article markdown-body" id="readerTranslation"></div>
+            <div class="reader-empty" id="readerTransEmpty" style="display:none"></div>
+          </div>
         </div>
-        <div class="reader-loading" id="readerTransLoading" style="display:none">
-          <div class="reader-loading-spinner"></div>
-          <div class="reader-loading-text">AI 正在翻译…</div>
-        </div>
-        <div class="reader-article markdown-body" id="readerTranslation"></div>
-        <div class="reader-empty" id="readerTransEmpty" style="display:none"></div>
       </div>
     </div>
   </div>
