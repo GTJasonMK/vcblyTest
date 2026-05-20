@@ -1,0 +1,279 @@
+/* ========== 翻译训练 ========== */
+
+#homeTranslationCard {
+  grid-column: 1 / -1;
+}
+#homeTranslationCard::before {
+  background: linear-gradient(90deg, var(--accent), var(--green));
+}
+.home-card-wide {
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+  padding: 14px 16px;
+}
+.home-card-wide .home-card-icon {
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 800;
+}
+.home-card-wide-main {
+  flex: 1;
+  min-width: 0;
+}
+.home-card-wide .home-card-desc {
+  margin-bottom: 0;
+}
+.home-card-wide .btn {
+  flex: 0 0 auto;
+}
+
+#panel-translation.active {
+  flex: 0 1 auto;
+  width: min(100%, 720px);
+  max-height: calc(100dvh - 56px);
+  margin: auto;
+  overflow-y: auto;
+  align-items: center;
+  padding: 14px;
+}
+.translation-shell {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  text-align: left;
+}
+.translation-topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.translation-topbar h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+}
+.translation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+}
+.translation-select-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.translation-select-row select {
+  height: 34px;
+  min-width: 92px;
+  padding: 4px 28px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+.translation-status {
+  min-height: 18px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  text-align: center;
+}
+.translation-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px;
+}
+.translation-card-label,
+.translation-answer-head {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.translation-answer-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.translation-chinese {
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  text-align: center;
+}
+.translation-blanks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 9px 7px;
+  min-height: 54px;
+  padding: 2px 0;
+}
+.translation-token {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.translation-input {
+  max-width: 17ch;
+  min-width: 4ch;
+  height: 34px;
+  padding: 5px 3px 2px;
+  border: 0;
+  border-bottom: 2px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+}
+.translation-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.55;
+  letter-spacing: 0.08em;
+}
+.translation-input:focus {
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+.translation-input.correct {
+  border-bottom-color: var(--green);
+  background: var(--green-soft);
+}
+.translation-input.wrong {
+  border-bottom-color: var(--accent);
+  background: var(--wrong-bg);
+}
+.translation-input.hinted {
+  border-bottom-color: var(--text-muted);
+  background: var(--bg);
+}
+.translation-punc {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.translation-empty,
+.translation-loading {
+  width: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.88rem;
+}
+.translation-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.translation-feedback {
+  min-height: 20px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+.translation-feedback.correct {
+  color: var(--green);
+  font-weight: 700;
+}
+.translation-feedback.wrong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .home-card-wide {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+    gap: 8px;
+  }
+  .home-card-wide .home-card-icon {
+    align-self: center;
+  }
+  #panel-translation.active {
+    flex: 0 1 auto;
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    margin: auto;
+    padding: 8px;
+  }
+  .translation-shell {
+    gap: 7px;
+  }
+  .translation-topbar {
+    grid-template-columns: auto 1fr auto;
+    gap: 4px;
+  }
+  .translation-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 7px;
+  }
+  .translation-toolbar .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .translation-select-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    font-size: 0.7rem;
+  }
+  .translation-select-row select {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    font-size: 0.78rem;
+  }
+  .translation-card {
+    padding: 10px 9px;
+  }
+  .translation-chinese {
+    font-size: 0.96rem;
+    line-height: 1.58;
+  }
+  .translation-blanks {
+    gap: 8px 6px;
+    min-height: 76px;
+    justify-content: center;
+  }
+  .translation-input {
+    height: 32px;
+    font-size: 0.9rem;
+  }
+  .translation-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .translation-actions .btn:first-child {
+    grid-column: 1 / -1;
+  }
+}

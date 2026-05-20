@@ -12,6 +12,7 @@ import {
 const player = new Audio();
 let activeButton = null;
 let activePath = '';
+let autoPlayBlocked = false;
 // 单调递增的播放 id：用于 play() Promise 的 catch 区分"我这次"与"我已被后续覆盖"，
 // 修复连点同一按钮时第一个 Promise 因 pause 被 reject 而误清正在播放的按钮 UI。
 let playSeq = 0;
@@ -61,9 +62,12 @@ export function updateAudioButton(button, word, zeroBasedIndex) {
   setButtonPlaying(button, false);
 }
 
-export function playWordAudio(word, zeroBasedIndex, button = null) {
+export function playWordAudio(word, zeroBasedIndex, button = null, options = {}) {
   const path = getAudioPath(word, zeroBasedIndex);
   if (!path) return false;
+
+  if (options.auto && autoPlayBlocked) return false;
+  if (!options.auto) autoPlayBlocked = false;
 
   if (activeButton && activeButton !== button) {
     setButtonPlaying(activeButton, false);
@@ -84,11 +88,14 @@ export function playWordAudio(word, zeroBasedIndex, button = null) {
 
   const playResult = player.play();
   if (playResult && typeof playResult.catch === 'function') {
-    playResult.catch(() => {
+    playResult.catch(err => {
       // 仅当这次 play 仍是"最新一次"时才清按钮；
       // 否则说明已被后续 playWordAudio 覆盖，让后续控制 UI。
       if (myPlayId === playSeq) {
         clearActiveButton();
+      }
+      if (options.auto && err?.name === 'NotAllowedError') {
+        autoPlayBlocked = true;
       }
     });
   }
@@ -102,6 +109,10 @@ export function playWordAudioFromButton(button) {
   const rawIndex = button.dataset.audioIndex;
   const index = rawIndex === undefined ? undefined : Number(rawIndex);
   return playWordAudio(word, Number.isInteger(index) ? index : undefined, button);
+}
+
+export function autoplayWordAudio(word, zeroBasedIndex, button = null) {
+  return playWordAudio(word, zeroBasedIndex, button, { auto: true });
 }
 
 export function preloadWordAudio(word, zeroBasedIndex, options = {}) {

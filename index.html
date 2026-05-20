@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="css/badges.css?v=3">
 <link rel="stylesheet" href="css/responsive.css?v=3">
 <link rel="stylesheet" href="css/reader.css">
+<link rel="stylesheet" href="css/translation.css">
 </head>
 <body>
 
@@ -83,6 +84,15 @@
         <p class="home-card-desc" id="homeNotebookSummary">暂无测试记录</p>
         <div class="nb-mini-preview" id="nbMiniPreview"></div>
         <button class="btn btn-secondary btn-block" onclick="showPanel('notebook')">进入错词本</button>
+      </div>
+
+      <div class="home-card home-card-wide" id="homeTranslationCard">
+        <div class="home-card-icon">译</div>
+        <div class="home-card-wide-main">
+          <h3>翻译训练</h3>
+          <p class="home-card-desc">AI 生成中译英句子 · 按单词填空 · 逐字母提示</p>
+        </div>
+        <button class="btn btn-accent" onclick="showPanel('translation')">开始训练</button>
       </div>
     </div>
 
@@ -218,6 +228,62 @@
           <span class="key-hints-inline"><kbd>1</kbd>-<kbd>4</kbd> 选择 · <kbd>Space</kbd> 下一题</span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 翻译训练面板 -->
+  <div class="panel" id="panel-translation">
+    <div class="translation-shell">
+      <div class="translation-topbar">
+        <button class="nav-link" onclick="showPanel('home')">← 返回</button>
+        <h3>翻译训练</h3>
+        <button class="nav-link" onclick="toggleAiConfig()">AI 设置</button>
+      </div>
+
+      <div class="translation-toolbar">
+        <label class="translation-select-row">
+          <span>难度</span>
+          <select id="translationLevel">
+            <option value="考研英语基础难度">基础</option>
+            <option value="考研英语中等难度" selected>中等</option>
+            <option value="考研英语高难度">高难</option>
+          </select>
+        </label>
+        <label class="translation-select-row">
+          <span>长度</span>
+          <select id="translationLength">
+            <option value="6 到 9 个英文单词">短句</option>
+            <option value="10 到 14 个英文单词" selected>中句</option>
+            <option value="15 到 20 个英文单词">长句</option>
+          </select>
+        </label>
+        <button class="btn btn-primary" id="translationGenerateBtn" onclick="startTranslationTraining()">生成句子</button>
+      </div>
+
+      <div class="translation-status" id="translationStatus">生成一句中文提示后，在下方横杠中填写对应英文单词。</div>
+
+      <section class="translation-card translation-prompt-card">
+        <div class="translation-card-label">中文</div>
+        <div class="translation-chinese" id="translationChinese">点击“生成句子”开始训练</div>
+      </section>
+
+      <section class="translation-card translation-answer-card">
+        <div class="translation-answer-head">
+          <span>英文填空</span>
+          <span id="translationWordCount">0 个单词</span>
+        </div>
+        <div class="translation-blanks" id="translationBlanks">
+          <span class="translation-empty">等待生成题目</span>
+        </div>
+      </section>
+
+      <div class="translation-actions">
+        <button class="btn btn-accent" onclick="checkTranslationAnswer()">检查答案</button>
+        <button class="btn btn-secondary" onclick="giveTranslationHint()">提示字母</button>
+        <button class="btn btn-secondary" onclick="startTranslationTraining()">换一句</button>
+      </div>
+
+      <div class="translation-feedback" id="translationFeedback"></div>
     </div>
   </div>
 

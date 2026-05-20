@@ -9,6 +9,7 @@ import { clearAudioCache, playWordAudioFromButton, registerAudioServiceWorker } 
 import { escapeHtml } from './ui-common.js';
 import { askAi, renderMarkdown } from './ai.js';
 import { openReaderWithWords, closeReader, regenReaderArticle, startGenerateReader, startGenerateTranslation, switchReaderTab } from './ui-reader.js';
+import * as Translation from './ui-translation.js';
 import { PANEL } from './constants.js';
 
 // ===== 主题管理 =====
@@ -326,6 +327,11 @@ window.regenReaderArticle = () => regenReaderArticle();
 window.startGenerateReader = () => startGenerateReader();
 window.startGenerateTranslation = () => startGenerateTranslation();
 window.switchReaderTab = (tab) => switchReaderTab(tab);
+
+// ===== 翻译训练 =====
+window.startTranslationTraining = () => Translation.startTranslationTraining();
+window.checkTranslationAnswer = () => Translation.checkTranslationAnswer();
+window.giveTranslationHint = () => Translation.giveTranslationHint();
 
 // ===== AI 详解弹窗 + 例句 =====
 let _aiDetailWord = null;
@@ -757,7 +763,7 @@ function showHashPanel() {
   const params = new URLSearchParams(location.search);
   const hrefPanel = location.href.match(/[?&#]panel=([^&#]+)/)?.[1];
   const name = decodeURIComponent((params.get('panel') || hrefPanel || location.hash.replace('#', '')).trim());
-  if (['history', 'notebook', 'badges'].includes(name)) {
+  if (['history', 'notebook', 'badges', 'translation'].includes(name)) {
     window.showPanel(name);
   } else {
     window.showPanel('home');
@@ -803,6 +809,22 @@ document.addEventListener('keydown', e => {
   const testPanel = document.getElementById(PANEL.TEST);
   const reviewPanel = document.getElementById(PANEL.REVIEW);
   const notebookPanel = document.getElementById(PANEL.NOTEBOOK);
+  const translationPanel = document.getElementById(PANEL.TRANSLATION);
+
+  if (translationPanel && translationPanel.classList.contains('active')) {
+    const key = e.key.toLowerCase();
+    if (key === 'h') {
+      e.preventDefault();
+      Translation.giveTranslationHint();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      Translation.checkTranslationAnswer();
+    } else if (key === 'n') {
+      e.preventDefault();
+      Translation.startTranslationTraining();
+    }
+    return;
+  }
 
   // 错词本：上下选词，左右切换当天测试次数，P 播放发音
   if (notebookPanel && notebookPanel.classList.contains('active')) {

@@ -4,7 +4,7 @@ import { allWords, session, getCurrentWord, getCurrentWordIndex, resetSession, r
 import { updateSettings } from './state.js';
 import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession, loadWordStats, recordWordResult } from './storage.js';
 import * as UI from './ui.js';
-import { playWordAudio, preloadWordAudioList } from './audio.js';
+import { autoplayWordAudio, playWordAudio, preloadWordAudioList } from './audio.js';
 
 /** 计算每词基础权重（基于历史统计）
  *  公式：2.5 + (wrong / tested) * 1.5
@@ -157,6 +157,13 @@ function preloadTestAudioWindow() {
   );
 }
 
+function autoplayCurrentTestWord() {
+  const idx = getCurrentWordIndex();
+  const word = allWords[idx];
+  if (!word) return;
+  autoplayWordAudio(word, idx, document.getElementById('wordAudioBtn'));
+}
+
 /** 开始本次测试 */
 export function startSession() {
   if (!allWords.length) {
@@ -251,6 +258,7 @@ export function resumeSession() {
 
   UI.updateProgress();
   preloadTestAudioWindow();
+  autoplayCurrentTestWord();
 }
 
 /** 显示当前单词及其选项 */
@@ -265,6 +273,7 @@ function showCurrentWord() {
 
   UI.renderOptions(options);
   preloadTestAudioWindow();
+  autoplayCurrentTestWord();
 }
 
 /** 播放当前测试单词发音 */
@@ -448,6 +457,7 @@ export function startReview() {
   UI.showPanel('review');
   UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
   preloadReviewAudioWindow();
+  autoplayCurrentReviewWord();
 }
 
 export function reviewPrev() {
@@ -455,6 +465,7 @@ export function reviewPrev() {
     reviewIndex--;
     UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
     preloadReviewAudioWindow();
+    autoplayCurrentReviewWord();
   }
 }
 
@@ -463,6 +474,7 @@ export function reviewNext() {
     reviewIndex++;
     UI.renderReviewWord(reviewIndex, session.todayUnknown.length);
     preloadReviewAudioWindow();
+    autoplayCurrentReviewWord();
   }
 }
 
@@ -473,6 +485,12 @@ function preloadReviewAudioWindow() {
     words.map(w => ({ word: w, index: w.idx })),
     { priority: 'high', warmMemory: true, prefetchedOnly: true }
   );
+}
+
+function autoplayCurrentReviewWord() {
+  const word = session.todayUnknown[reviewIndex];
+  if (!word) return;
+  autoplayWordAudio(word, word.idx, document.getElementById('reviewAudioBtn'));
 }
 
 /** 播放当前复习单词发音 */
@@ -494,6 +512,7 @@ export function reviewJumpTo(n) {
   reviewIndex = target;
   UI.renderReviewWord(reviewIndex, total);
   preloadReviewAudioWindow();
+  autoplayCurrentReviewWord();
 }
 
 /** 获取当前复习单词的信息 */
