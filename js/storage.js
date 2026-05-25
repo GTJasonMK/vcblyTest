@@ -81,12 +81,18 @@ export function saveSettings(settings) {
 /** 读取历史记录 */
 export function loadHistory() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY.HISTORY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY.HISTORY) || '[]');
+    const cleaned = normalizeHistoryList(raw);
+    if (Array.isArray(raw) && cleaned.length !== raw.length) {
+      saveHistory(cleaned);
+    }
+    return cleaned;
   } catch { return []; }
 }
 
 /** 保存历史记录（自动裁剪超量条目） */
 export function saveHistory(history) {
+  history = normalizeHistoryList(history);
   if (history.length > MAX_HISTORY_ITEMS) {
     history = history.slice(-MAX_HISTORY_ITEMS);
   }
@@ -160,6 +166,7 @@ export function saveSession(sessionData) {
     maxUnknown: sessionData.maxUnknown,
     awaitingNext: sessionData.awaitingNext || false,
     isQuickTest: sessionData.isQuickTest || false,
+    wordResults: Array.isArray(sessionData.wordResults) ? sessionData.wordResults : [],
   };
   localStorage.setItem(STORAGE_KEY.SESSION, JSON.stringify(slim));
 }
@@ -286,7 +293,12 @@ function sanitizeHistoryEntry(entry) {
   const words = Array.isArray(entry.words)
     ? entry.words.filter(w => w && typeof w === 'object' && typeof w.w === 'string')
     : [];
-  const tested = Math.max(0, Math.floor(Number(entry.testedCount) || 0));
+  const hasTestedCount = entry.testedCount !== undefined && entry.testedCount !== null && entry.testedCount !== '';
+  const testedRaw = Number(entry.testedCount);
+  const tested = hasTestedCount && Number.isFinite(testedRaw)
+    ? Math.max(0, Math.floor(testedRaw))
+    : words.length;
+  if (tested <= 0) return null;
   const correct = Math.max(0, Math.floor(Number(entry.correctCount) || 0));
   return {
     date: entry.date,
@@ -294,6 +306,11 @@ function sanitizeHistoryEntry(entry) {
     testedCount: tested,
     correctCount: Math.min(correct, tested),
   };
+}
+
+function normalizeHistoryList(history) {
+  if (!Array.isArray(history)) return [];
+  return history.map(sanitizeHistoryEntry).filter(Boolean);
 }
 
 /** 校验词级统计：剔除 tested/wrong 异常的条目，确保后续加权抽样不退化为 NaN */

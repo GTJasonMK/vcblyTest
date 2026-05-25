@@ -48,6 +48,21 @@ function autoplayCurrentTestWord() {
   autoplayWordAudio(word, idx, document.getElementById('wordAudioBtn'));
 }
 
+function recordPendingWordResult(wordIdx, isCorrect) {
+  if (session.isQuickTest) return;
+  if (!Array.isArray(session.wordResults)) session.wordResults = [];
+  session.wordResults.push({ idx: wordIdx, isCorrect: Boolean(isCorrect) });
+}
+
+function commitPendingWordResults() {
+  if (session.isQuickTest || !Array.isArray(session.wordResults)) return;
+  session.wordResults.forEach(result => {
+    if (!Number.isInteger(result?.idx)) return;
+    recordWordResult(result.idx, result.isCorrect === true);
+  });
+  session.wordResults = [];
+}
+
 /** 开始本次测试 */
 export function startSession() {
   if (!allWords.length) {
@@ -189,8 +204,7 @@ export function markUnknown() {
     });
   }
 
-  // 记录词级统计（快速测试不记录）
-  if (!session.isQuickTest) recordWordResult(wordIdx, false);
+  recordPendingWordResult(wordIdx, false);
 
   // 高亮正确选项，帮助学习
   UI.showAnswerFeedback(-1, session.correctIdx);
@@ -216,8 +230,7 @@ export function selectAnswer(optIdx) {
   const wordIdx = getCurrentWordIndex();
   const isCorrect = session.options[optIdx].isCorrect;
 
-  // 记录词级统计（快速测试不记录）
-  if (!session.isQuickTest) recordWordResult(wordIdx, isCorrect);
+  recordPendingWordResult(wordIdx, isCorrect);
 
   UI.showAnswerFeedback(optIdx, session.correctIdx);
 
@@ -283,11 +296,13 @@ function advanceOrReshuffle() {
 export function endSession() {
   if (!session.active) return;
   const isQuick = session.isQuickTest;
+  session.endedEarly = false;
   session.active = false;
   clearSession();
 
   // 快速测试不记入历史，但仍显示结果
   if (!isQuick) {
+    commitPendingWordResults();
     const history = loadHistory();
     history.push({
       date: new Date().toISOString(),
@@ -305,23 +320,15 @@ export function endSession() {
 /** 提前结束 */
 export function endSessionEarly() {
   if (!session.active) return;
-  const qmsg = session.isQuickTest ? '确定要提前结束本次快速测试吗？' : '确定要提前结束本次测试吗？当前不会单词将记入本次结果。';
+  const qmsg = session.isQuickTest
+    ? '确定要提前结束本次快速测试吗？'
+    : '确定要提前结束本次测试吗？提前结束不会记入历史记录。';
   if (!confirm(qmsg)) return;
 
-  const isQuick = session.isQuickTest;
+  session.endedEarly = true;
   session.active = false;
+  session.wordResults = [];
   clearSession();
-
-  if (!isQuick) {
-    const history = loadHistory();
-    history.push({
-      date: new Date().toISOString(),
-      words: session.todayUnknown.map(w => ({ idx: w.idx, w: w.w, uk: w.uk, us: w.us, d: w.d })),
-      testedCount: session.testedCount,
-      correctCount: session.correctCount,
-    });
-    saveHistory(history);
-  }
 
   UI.showPanel('result');
   UI.renderResult();

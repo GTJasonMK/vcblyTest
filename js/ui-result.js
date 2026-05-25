@@ -6,17 +6,22 @@ import { resolveWordDef } from './ui-word-utils.js';
 export function renderResult() {
   const words = session.todayUnknown;
   const isQuick = session.isQuickTest;
+  const isUnrecorded = isQuick || session.endedEarly;
   document.getElementById('statTested').textContent = session.testedCount;
   document.getElementById('statCorrect').textContent = session.correctCount;
   document.getElementById('statUnknown').textContent = words.length;
-  document.getElementById('resultDate').textContent = isQuick ? '' : new Date().toLocaleString('zh-CN');
+  document.getElementById('resultDate').textContent = isUnrecorded ? '' : new Date().toLocaleString('zh-CN');
 
   const titleEl = document.querySelector('#panel-result h2');
-  if (titleEl) titleEl.textContent = isQuick ? '📝 快速测试完成（不记入记录）' : '此次测试完成';
-  document.getElementById('resultDate').style.display = isQuick ? 'none' : '';
+  if (titleEl) {
+    titleEl.textContent = session.endedEarly
+      ? '提前结束（不记入记录）'
+      : (isQuick ? '📝 快速测试完成（不记入记录）' : '此次测试完成');
+  }
+  document.getElementById('resultDate').style.display = isUnrecorded ? 'none' : '';
 
   const historyLink = document.querySelector('#panel-result .nav-links .nav-link[onclick*="history"]');
-  if (historyLink) historyLink.style.display = isQuick ? 'none' : '';
+  if (historyLink) historyLink.style.display = isUnrecorded ? 'none' : '';
 
   const listEl = document.getElementById('todayWordList');
   if (words.length === 0) {

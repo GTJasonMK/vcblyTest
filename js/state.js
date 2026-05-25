@@ -35,6 +35,8 @@ export function createEmptySession() {
     correctIdx: -1,     // 当前题正确答案的选项索引
     awaitingNext: false, // 答错后等待点击"下一个"
     isQuickTest: false,  // 快速测试（不计入历史记录）
+    endedEarly: false,   // 提前结束：只展示本次结果，不写入历史
+    wordResults: [],     // 本次测试的词级答题结果，完成时再统一写入统计
   };
 }
 
@@ -56,6 +58,8 @@ export function restoreSession(saved) {
   session.maxUnknown = saved.maxUnknown;
   session.awaitingNext = saved.awaitingNext || false;
   session.isQuickTest = saved.isQuickTest || false;
+  session.endedEarly = false;
+  session.wordResults = Array.isArray(saved.wordResults) ? saved.wordResults : [];
   // awaitingNext=true 表示恢复点是"已答错待下一题"，必须保持已作答态，
   // 防止键盘 1-4 在没有 options 数据的情况下再触发 selectAnswer。
   if (session.awaitingNext) session.answered = true;
