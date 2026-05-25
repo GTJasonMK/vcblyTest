@@ -7,6 +7,8 @@ import { askAi, renderMarkdown } from './ai.js';
 import { escapeHtml } from './ui-common.js';
 import { saveReaderArticle, getReaderArticle } from './storage.js';
 import {
+  buildContextReaderQuestion,
+  buildContextReaderSystemPrompt,
   buildReaderQuestion,
   buildReaderSystemPrompt,
   buildTranslationQuestion,
@@ -17,6 +19,9 @@ import { bindReaderPopupEvents, hideReaderPopup } from './reader-popup.js';
 
 // ===== 模块状态 =====
 
+const READER_MODE_ENGLISH = 'english';
+const READER_MODE_CONTEXT = 'context';
+
 let _readerWords = [];          // [{w, uk, us, d}]
 let _articleMarkdown = '';      // 阅读 tab 当前英文文章 markdown
 let _translationMarkdown = '';  // 翻译 tab 当前中文译文 markdown
@@ -24,6 +29,8 @@ let _articleMeta = null;        // { dateKey, sessionKey } 用于保存
 let _articleCtrl = null;        // 阅读 tab 的 AbortController
 let _translationCtrl = null;    // 翻译 tab 的 AbortController
 let _activeTab = 'article';     // 'article' | 'translation'
+let _readerMode = READER_MODE_ENGLISH; // 'english' | 'context'
+let _pendingReaderAction = null; // 'generate' | 'regen'
 
 // ===== 公开 API =====
 
@@ -41,6 +48,7 @@ export function openReaderWithWords(words, opts = {}) {
     ? { dateKey: opts.dateKey, sessionKey: opts.sessionKey }
     : null;
   _activeTab = 'article';
+  _readerMode = READER_MODE_ENGLISH;
 
   if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} _articleCtrl = null; }
   if (_translationCtrl) { try { _translationCtrl.abort(); } catch {} _translationCtrl = null; }
@@ -52,22 +60,51 @@ export function openReaderWithWords(words, opts = {}) {
 
 /** 用户点击"开始生成文章"后触发 AI 生成 */
 export function startGenerateReader() {
-  const begin = document.getElementById('readerBegin');
-  const loading = document.getElementById('readerLoading');
-  if (begin) begin.style.display = 'none';
-  if (loading) loading.style.display = 'flex';
-  generateReaderArticle();
+  _showReaderModeChoice('generate');
+}
+
+/** 选择文章生成方式后真正开始生成 */
+export async function chooseReaderModeAndGenerate(mode) {
+  const action = _pendingReaderAction || 'generate';
+  _pendingReaderAction = null;
+  _hideReaderModeChoice();
+
+  _readerMode = _normalizeReaderMode(mode);
+  _syncReaderModeVisibility();
+  if (_isContextMode()) {
+    _translationMarkdown = '';
+    _clearTranslationPane();
+  }
+
+  if (action === 'regen') {
+    switchReaderTab('article');
+    _setRegenBusy(true);
+    _cascadeClearTranslation();
+    await generateReaderArticle();
+    _setRegenBusy(false);
+    return;
+  }
+
+  _beginReaderGeneration();
+  await generateReaderArticle();
+}
+
+/** 关闭文章生成方式选择层 */
+export function cancelReaderModeChoice() {
+  _pendingReaderAction = null;
+  _hideReaderModeChoice();
 }
 
 /** 用户点击"开始生成翻译"后触发 AI 翻译 */
 export function startGenerateTranslation() {
-  if (!_articleMarkdown) return;
+  if (_isContextMode() || !_articleMarkdown) return;
   generateTranslation();
 }
 
 /** 切换 tab — 平移 track（两 pane 始终 mounted、并排在固定 stage 窗口内），保持 transition 平滑 */
 export function switchReaderTab(tab) {
   if (tab !== 'article' && tab !== 'translation') return;
+  if (_isContextMode() && tab === 'translation') tab = 'article';
   _activeTab = tab;
   hideReaderPopup();
 
@@ -83,6 +120,7 @@ export function switchReaderTab(tab) {
   }
 
   if (tab === 'translation') _syncTranslationPane();
+  _syncReaderModeVisibility();
   _updateRegenBtn();
 }
 
@@ -99,7 +137,8 @@ export function viewReaderArticle(dateKey, sessionKey) {
     return { w: w.w, uk: w.uk || '', us: w.us || '', d: w.d || '' };
   });
   _articleMarkdown = saved.markdown || '';
-  _translationMarkdown = saved.translation || '';
+  _readerMode = _normalizeReaderMode(saved.mode);
+  _translationMarkdown = _isContextMode() ? '' : (saved.translation || '');
   _articleMeta = { dateKey, sessionKey };
   _activeTab = 'article';
 
@@ -117,6 +156,8 @@ export function closeReader() {
   if (_translationCtrl) { try { _translationCtrl.abort(); } catch {} _translationCtrl = null; }
   _articleMeta = null;
   _activeTab = 'article';
+  _pendingReaderAction = null;
+  _hideReaderModeChoice();
   const modal = document.getElementById('readerModal');
   if (modal) {
     modal.hidden = true;
@@ -126,30 +167,81 @@ export function closeReader() {
   hideReaderPopup();
 }
 
-/** 顶栏"换一篇"：按当前 tab 分派 */
+/** 顶栏"换一篇"：选择方式后重新生成文章 */
 export async function regenReaderArticle() {
-  const btn = document.getElementById('readerRegenBtn');
-  const setBtn = (busy) => {
-    if (!btn) return;
-    btn.disabled = busy;
-    btn.textContent = busy ? '生成中…' : '换一篇';
-  };
-
-  if (_activeTab === 'translation') {
-    if (!_articleMarkdown) return;
-    setBtn(true);
-    await generateTranslation();
-    setBtn(false);
-    return;
-  }
-
-  setBtn(true);
-  _cascadeClearTranslation();
-  await generateReaderArticle();
-  setBtn(false);
+  _showReaderModeChoice('regen');
 }
 
 // ===== 内部函数 =====
+
+function _normalizeReaderMode(mode) {
+  return mode === READER_MODE_CONTEXT ? READER_MODE_CONTEXT : READER_MODE_ENGLISH;
+}
+
+function _isContextMode() {
+  return _readerMode === READER_MODE_CONTEXT;
+}
+
+function _showReaderModeChoice(action) {
+  if (_articleCtrl) return;
+  _pendingReaderAction = action;
+  hideReaderPopup();
+  const choice = document.getElementById('readerModeChoice');
+  if (choice) choice.hidden = false;
+}
+
+function _hideReaderModeChoice() {
+  const choice = document.getElementById('readerModeChoice');
+  if (choice) choice.hidden = true;
+}
+
+function _beginReaderGeneration() {
+  const begin = document.getElementById('readerBegin');
+  const loading = document.getElementById('readerLoading');
+  const loadingText = document.getElementById('readerLoadingText');
+  if (begin) begin.style.display = 'none';
+  if (loading) loading.style.display = 'flex';
+  if (loadingText) loadingText.textContent = _isContextMode() ? 'AI 正在生成中文语境…' : 'AI 正在生成文章…';
+}
+
+function _setRegenBusy(busy) {
+  const btn = document.getElementById('readerRegenBtn');
+  if (!btn) return;
+  btn.disabled = busy;
+  btn.textContent = busy ? '生成中…' : '换一篇';
+}
+
+function _syncReaderModeVisibility() {
+  const isContext = _isContextMode();
+  const tabs = document.querySelector('.reader-tabs');
+  const tabTranslation = document.getElementById('readerTabTranslation');
+  const paneTranslation = document.getElementById('readerPaneTranslation');
+  const loadingText = document.getElementById('readerLoadingText');
+
+  if (tabs) tabs.classList.toggle('reader-tabs-hidden', isContext);
+  if (tabTranslation) {
+    tabTranslation.hidden = isContext;
+    tabTranslation.setAttribute('aria-hidden', isContext ? 'true' : 'false');
+  }
+  if (paneTranslation) paneTranslation.setAttribute('aria-hidden', isContext ? 'true' : 'false');
+  if (loadingText) loadingText.textContent = isContext ? 'AI 正在生成中文语境…' : 'AI 正在生成文章…';
+
+  if (isContext) {
+    if (_translationCtrl) { try { _translationCtrl.abort(); } catch {} _translationCtrl = null; }
+    _clearTranslationPane();
+  }
+}
+
+function _clearTranslationPane() {
+  const begin = document.getElementById('readerTransBegin');
+  const empty = document.getElementById('readerTransEmpty');
+  const transEl = document.getElementById('readerTranslation');
+  const loading = document.getElementById('readerTransLoading');
+  if (begin) begin.style.display = 'none';
+  if (empty) empty.style.display = 'none';
+  if (loading) loading.style.display = 'none';
+  if (transEl) transEl.innerHTML = '';
+}
 
 function _openModal({ showBegin } = {}) {
   const modal = document.getElementById('readerModal');
@@ -171,6 +263,9 @@ function _openModal({ showBegin } = {}) {
   modal.scrollTop = 0;
   document.body.classList.add('modal-open');
 
+  _pendingReaderAction = null;
+  _hideReaderModeChoice();
+  _syncReaderModeVisibility();
   // 翻译 pane 状态统一由 _syncTranslationPane 管理（不再在这里硬隐藏 transBegin，
   // 否则 swipe 翻到 translation pane 但 switchReaderTab 还没触发时会看到空白页）
   _syncTranslationPane();
@@ -262,6 +357,11 @@ async function generateReaderArticle() {
   if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} }
   hideReaderPopup();
   _articleMarkdown = '';
+  const isContext = _isContextMode();
+  if (isContext) {
+    _translationMarkdown = '';
+    _clearTranslationPane();
+  }
 
   const full = await _runAiStream({
     contentEl: article,
@@ -270,8 +370,8 @@ async function generateReaderArticle() {
     beginEl: null,
     storeCtrl: (c) => { _articleCtrl = c; },
     anchorWord: _readerWords[0].w,
-    question: buildReaderQuestion(_readerWords),
-    systemPrompt: buildReaderSystemPrompt(),
+    question: isContext ? buildContextReaderQuestion(_readerWords) : buildReaderQuestion(_readerWords),
+    systemPrompt: isContext ? buildContextReaderSystemPrompt() : buildReaderSystemPrompt(),
     onChunkRender: (chunk) => {
       _articleMarkdown += chunk;
       article.innerHTML = renderMarkdown(_articleMarkdown);
@@ -283,14 +383,15 @@ async function generateReaderArticle() {
 
   if (!full) _articleMarkdown = '';
   if (full && _articleMeta) _saveCurrent();
+  _syncReaderModeVisibility();
   _updateRegenBtn();
   // 用户可能在 article 流式期间已切到翻译 tab，文章完成后让翻译 pane 露出生成按钮
-  if (_activeTab === 'translation') _syncTranslationPane();
+  if (_activeTab === 'translation' && !_isContextMode()) _syncTranslationPane();
 }
 
 /** 生成/重新生成中文译文（翻译 tab） */
 async function generateTranslation() {
-  if (!_articleMarkdown) return;
+  if (_isContextMode() || !_articleMarkdown) return;
   const transEl = document.getElementById('readerTranslation');
   if (!transEl) return;
 
@@ -321,6 +422,11 @@ async function generateTranslation() {
 
 /** 切到翻译 tab 时，根据当前状态同步 pane（无文章 / 已有译文 / 待生成） */
 function _syncTranslationPane() {
+  if (_isContextMode()) {
+    _clearTranslationPane();
+    return;
+  }
+
   const begin = document.getElementById('readerTransBegin');
   const empty = document.getElementById('readerTransEmpty');
   const transEl = document.getElementById('readerTranslation');
@@ -362,6 +468,10 @@ function _cascadeClearTranslation() {
   const begin = document.getElementById('readerTransBegin');
   const loading = document.getElementById('readerTransLoading');
   if (loading) loading.style.display = 'none';
+  if (_isContextMode()) {
+    _clearTranslationPane();
+    return;
+  }
   _setTransEmpty('文章已更新，请重新生成翻译。');
   if (begin) begin.style.display = 'flex';
 }
@@ -377,11 +487,10 @@ function _setTransEmpty(msg) {
 /** 顶栏"换一篇"按钮显隐：当前 tab 有内容才出现 */
 function _updateRegenBtn() {
   const btn = document.getElementById('readerRegenBtn');
-  if (!btn) return;
   const visible = _activeTab === 'article'
     ? !!_articleMarkdown
     : !!_translationMarkdown;
-  btn.style.display = visible ? '' : 'none';
+  if (btn) btn.style.display = visible ? '' : 'none';
 }
 
 function _setWordCount(n) {
@@ -395,8 +504,9 @@ function _saveCurrent() {
   if (!_articleMeta || !_articleMarkdown) return;
   saveReaderArticle(_articleMeta.dateKey, _articleMeta.sessionKey, {
     words: _readerWords.map(w => ({ w: w.w, uk: w.uk, us: w.us, d: w.d })),
+    mode: _readerMode,
     markdown: _articleMarkdown,
-    translation: _translationMarkdown || undefined,
+    translation: _isContextMode() ? undefined : (_translationMarkdown || undefined),
     generatedAt: new Date().toISOString(),
   });
 }
@@ -409,6 +519,8 @@ function _showEmpty(msg) {
   const regen = document.getElementById('readerRegenBtn');
   if (!modal || !empty) return;
 
+  _pendingReaderAction = null;
+  _hideReaderModeChoice();
   if (article) article.innerHTML = '';
   if (loading) loading.style.display = 'none';
   if (regen) regen.style.display = 'none';
@@ -443,6 +555,7 @@ bindReaderPopupEvents();
   }
 
   function _canSwipeTo(dir) {
+    if (_isContextMode()) return false;
     if (dir === 'left') return _activeTab === 'article';
     if (dir === 'right') return _activeTab === 'translation';
     return false;

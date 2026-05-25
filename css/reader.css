@@ -3,7 +3,7 @@
 .reader-dialog {
   max-width: 860px;
   text-align: left;
-  /* 顶栏将用 sticky 定位，dialog 本身用相对定位做参照 */
+  position: relative;
 }
 
 /* ---- sticky 头部（topbar + tabs 一起置顶） ---- */
@@ -27,6 +27,8 @@
   border-bottom: 1px solid var(--border-light);
 }
 .reader-topbar h3 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0 !important;
   font-size: 1rem;
   font-weight: 700;
@@ -38,12 +40,44 @@
   flex-shrink: 0;
   white-space: nowrap;
 }
+.reader-topbar .nav-link {
+  flex: 0 0 auto;
+}
+.reader-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.reader-mode-option {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 12px 16px;
+  white-space: nowrap;
+  transition: background var(--ease), border-color var(--ease), color var(--ease), box-shadow var(--ease);
+}
+.reader-mode-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 /* ---- tab 条 ---- */
 .reader-tabs {
   padding: 0 4px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border-light);
+}
+.reader-tabs.reader-tabs-hidden {
+  display: none;
 }
 
 /* ---- pane 翻页：stage 是固定裁切窗口，track 是横向胶卷 ---- */
@@ -52,6 +86,42 @@
   width: 100%;
   overflow: hidden;
   flex: 0 0 auto;
+}
+.reader-mode-choice {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.reader-mode-choice[hidden] {
+  display: none;
+}
+.reader-mode-choice-panel {
+  width: min(360px, 100%);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 18px;
+  text-align: center;
+}
+.reader-mode-choice-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+.reader-mode-choice-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.reader-mode-cancel {
+  margin: 12px auto 0;
 }
 .reader-pane-track {
   display: flex;
@@ -292,9 +362,13 @@
   .reader-topbar {
     padding: 10px 14px;
     border-bottom: 1px solid var(--border);
+    gap: 8px;
   }
   .reader-topbar h3 {
     font-size: 0.9rem;
+  }
+  .reader-actions {
+    gap: 6px;
   }
   .reader-topbar .btn-sm {
     padding: 5px 12px;
@@ -314,6 +388,18 @@
   }
   .reader-begin {
     padding: 48px 20px;
+  }
+  .reader-mode-choice {
+    align-items: flex-end;
+    padding: 16px;
+  }
+  .reader-mode-choice-panel {
+    width: 100%;
+    border-radius: var(--radius-lg);
+    padding: 16px;
+  }
+  .reader-mode-choice-actions {
+    grid-template-columns: 1fr;
   }
   /* 移动端浮窗：靠近底部，方便拇指操作 */
   .reader-popup {

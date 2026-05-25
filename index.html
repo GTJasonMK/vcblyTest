@@ -586,7 +586,9 @@
         <div class="badge-topbar reader-topbar">
           <button class="nav-link" onclick="closeReader()">关闭</button>
           <h3 id="readerTitle" style="margin:0">📖 阅读训练</h3>
-          <button class="btn btn-accent btn-sm" id="readerRegenBtn" onclick="regenReaderArticle()" style="display:none">换一篇</button>
+          <div class="reader-actions">
+            <button class="btn btn-accent btn-sm" id="readerRegenBtn" onclick="regenReaderArticle()" style="display:none">换一篇</button>
+          </div>
         </div>
         <div class="nb-tabs reader-tabs">
           <button class="nb-tab active" id="readerTabArticle" onclick="switchReaderTab('article')">阅读</button>
@@ -596,6 +598,16 @@
 
       <!-- stage 是固定裁切窗口；track 是横向胶卷，transform 由它承担 -->
       <div class="reader-pane-stage" id="readerPaneStage">
+        <div class="reader-mode-choice" id="readerModeChoice" hidden>
+          <div class="reader-mode-choice-panel" role="dialog" aria-modal="false" aria-labelledby="readerModeChoiceTitle">
+            <div class="reader-mode-choice-title" id="readerModeChoiceTitle">选择生成方式</div>
+            <div class="reader-mode-choice-actions">
+              <button type="button" class="reader-mode-option" onclick="chooseReaderModeAndGenerate('english')">英语阅读</button>
+              <button type="button" class="reader-mode-option" onclick="chooseReaderModeAndGenerate('context')">中文语境</button>
+            </div>
+            <button type="button" class="nav-link reader-mode-cancel" onclick="cancelReaderModeChoice()">取消</button>
+          </div>
+        </div>
         <div class="reader-pane-track" id="readerPaneTrack">
           <!-- 阅读 tab -->
           <div class="reader-tab-pane" id="readerPaneArticle">

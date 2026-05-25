@@ -4,6 +4,8 @@ import * as Session from './session.js';
 import {
   openReaderWithWords,
   closeReader,
+  cancelReaderModeChoice,
+  chooseReaderModeAndGenerate,
   regenReaderArticle,
   startGenerateReader,
   startGenerateTranslation,
@@ -52,6 +54,8 @@ function bindSessionActions() {
 function bindReaderActions() {
   window.openReaderWithWords = (words, opts) => openReaderWithWords(words, opts);
   window.closeReader = () => closeReader();
+  window.cancelReaderModeChoice = () => cancelReaderModeChoice();
+  window.chooseReaderModeAndGenerate = mode => chooseReaderModeAndGenerate(mode);
   window.regenReaderArticle = () => regenReaderArticle();
   window.startGenerateReader = () => startGenerateReader();
   window.startGenerateTranslation = () => startGenerateTranslation();

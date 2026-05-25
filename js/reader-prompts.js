@@ -20,6 +20,28 @@ export function buildReaderQuestion(words) {
   return `请根据以上系统指令，用以下全部${words.length}个单词写一篇文章：\n\n${list}`;
 }
 
+export function buildContextReaderSystemPrompt() {
+  return '你是一个英语词汇语境训练设计师，擅长把英语目标词自然嵌入中文故事或说明文。\n'
+    + '严格要求：\n'
+    + '1. 写一篇以简体中文为主的短文，长度约 500-900 个汉字。\n'
+    + '2. 必须使用列表中的每一个目标词，并且目标词必须以英文原词自然出现在中文句子中。\n'
+    + '3. 除目标词外，正文尽量使用中文；不要把普通中文内容翻成英文。\n'
+    + '4. **绝对禁止**在段首或文末罗列单词、加粗目标词、用反引号包裹、加方括号、或添加词性/释义/注释。\n'
+    + '5. 让每个目标词都处在能体现语义和用法的上下文里，整体要像一篇连贯文章，不要机械造句。\n'
+    + '6. 只输出文章正文（markdown 格式：一级标题 + 多个自然段），不要附加任何解释。';
+}
+
+export function buildContextReaderQuestion(words) {
+  const list = words.map((word, index) => {
+    let line = `${index + 1}. **${word.w}**`;
+    if (word.d) line += ` — ${word.d}`;
+    if (word.uk) line += ` 英/${word.uk}/`;
+    if (word.us) line += ` 美/${word.us}/`;
+    return line;
+  }).join('\n');
+  return `请根据以上系统指令，把以下全部${words.length}个目标词自然嵌入一篇中文语境短文：\n\n${list}`;
+}
+
 export function buildTranslationSystemPrompt() {
   return '你是一名英译中翻译专家。请将用户提供的英文文章逐段翻译为自然流畅的简体中文，'
     + '保留原文的 markdown 结构（标题、段落、列表、强调等）。'
