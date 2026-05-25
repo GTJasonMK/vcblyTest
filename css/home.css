@@ -397,7 +397,7 @@
   gap: 6px;
 }
 .setting-row label { font-size: 0.78rem; color: var(--text-light); }
-.setting-row input {
+.setting-row input[type="number"] {
   width: 58px;
   padding: 7px 8px;
   border: 1.5px solid var(--border);
@@ -409,7 +409,7 @@
   color: var(--text);
   transition: border-color var(--ease);
 }
-.setting-row input:focus {
+.setting-row input[type="number"]:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -417,4 +417,21 @@
 .setting-unit {
   font-size: 0.82rem;
   color: var(--text-light);
+}
+.setting-row-toggle {
+  margin-top: -2px;
+}
+.setting-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.setting-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
 }

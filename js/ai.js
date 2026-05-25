@@ -1,15 +1,15 @@
 // ========== AI 大模型调用模块 ==========
 // 通用 OpenAI 兼容接口，用户需自行配置 endpoint / key / model。
 
+import { loadAiConfig } from './storage.js';
+
 const DEFAULT_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions';
 const DEFAULT_MODEL = 'deepseek-v4-flash';
 
 /** 读取当前 AI 配置 */
 function getConfig() {
   try {
-    const raw = localStorage.getItem('vocab_ai_config');
-    if (!raw) return null;
-    const cfg = JSON.parse(raw);
+    const cfg = loadAiConfig();
     if (!cfg.apiKey) return null;
     return {
       endpoint: cfg.endpoint || DEFAULT_ENDPOINT,

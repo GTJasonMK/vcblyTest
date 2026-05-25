@@ -6,6 +6,14 @@
 import { askAi, renderMarkdown } from './ai.js';
 import { escapeHtml } from './ui-common.js';
 import { saveReaderArticle, getReaderArticle } from './storage.js';
+import {
+  buildReaderQuestion,
+  buildReaderSystemPrompt,
+  buildTranslationQuestion,
+  buildTranslationSystemPrompt,
+} from './reader-prompts.js';
+import { highlightReaderWords } from './reader-highlight.js';
+import { bindReaderPopupEvents, hideReaderPopup } from './reader-popup.js';
 
 // ===== 模块状态 =====
 
@@ -61,7 +69,7 @@ export function startGenerateTranslation() {
 export function switchReaderTab(tab) {
   if (tab !== 'article' && tab !== 'translation') return;
   _activeTab = tab;
-  _hidePopup();
+  hideReaderPopup();
 
   const tabArticle = document.getElementById('readerTabArticle');
   const tabTranslation = document.getElementById('readerTabTranslation');
@@ -115,7 +123,7 @@ export function closeReader() {
     modal.scrollTop = 0;
   }
   document.body.classList.remove('modal-open');
-  _hidePopup();
+  hideReaderPopup();
 }
 
 /** 顶栏"换一篇"：按当前 tab 分派 */
@@ -177,7 +185,7 @@ function _displayArticle(markdown) {
   if (loading) loading.style.display = 'none';
   article.style.display = '';
   article.innerHTML = renderMarkdown(markdown);
-  _highlightWords(article, _readerWords);
+  highlightReaderWords(article, _readerWords);
   _updateRegenBtn();
 }
 
@@ -252,7 +260,7 @@ async function generateReaderArticle() {
   if (!article) return;
 
   if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} }
-  _hidePopup();
+  hideReaderPopup();
   _articleMarkdown = '';
 
   const full = await _runAiStream({
@@ -262,12 +270,12 @@ async function generateReaderArticle() {
     beginEl: null,
     storeCtrl: (c) => { _articleCtrl = c; },
     anchorWord: _readerWords[0].w,
-    question: _buildQuestion(_readerWords),
-    systemPrompt: _buildSystemPrompt(),
+    question: buildReaderQuestion(_readerWords),
+    systemPrompt: buildReaderSystemPrompt(),
     onChunkRender: (chunk) => {
       _articleMarkdown += chunk;
       article.innerHTML = renderMarkdown(_articleMarkdown);
-      _highlightWords(article, _readerWords);
+      highlightReaderWords(article, _readerWords);
       article.scrollTop = article.scrollHeight;
     },
     errorLabel: '文章生成',
@@ -296,8 +304,8 @@ async function generateTranslation() {
     beginEl: document.getElementById('readerTransBegin'),
     storeCtrl: (c) => { _translationCtrl = c; },
     anchorWord: _readerWords[0]?.w || 'translate',
-    question: _buildTranslationQuestion(),
-    systemPrompt: _buildTranslationSystemPrompt(),
+    question: buildTranslationQuestion(_articleMarkdown),
+    systemPrompt: buildTranslationSystemPrompt(),
     onChunkRender: (chunk) => {
       _translationMarkdown += chunk;
       transEl.innerHTML = renderMarkdown(_translationMarkdown);
@@ -376,105 +384,9 @@ function _updateRegenBtn() {
   btn.style.display = visible ? '' : 'none';
 }
 
-function _buildSystemPrompt() {
-  return '你是一个英语教学专家，擅长根据词汇表编写适合英语学习者的阅读文章。\n'
-    + '严格要求：\n'
-    + '1. 用给出的全部单词写一篇约 250-400 词的英语短文。\n'
-    + '2. 必须使用列表中的每一个单词（允许屈折变化，如复数、过去式、进行时、形容词形式等）。\n'
-    + '3. **绝对禁止**把目标词在段首罗列、加粗、用反引号包裹、加方括号、或以任何方式特殊标注；让目标词像普通词汇一样自然地融入句子里。\n'
-    + '4. **绝对禁止**在文中或末尾附加单词表、词性提示、注释、或任何形式的元说明。\n'
-    + '5. 选择能自然容纳所有词的主题，使文章读起来流畅、有连贯叙事或论述，不牵强堆砌。\n'
-    + '6. 只输出文章正文（markdown 格式：一级标题 + 多个自然段），不要在前后附加任何解释。';
-}
-
-function _buildQuestion(words) {
-  const list = words.map((w, i) => {
-    let line = `${i + 1}. **${w.w}**`;
-    if (w.d) line += ` — ${w.d}`;
-    if (w.uk) line += ` 英/${w.uk}/`;
-    if (w.us) line += ` 美/${w.us}/`;
-    return line;
-  }).join('\n');
-  return `请根据以上系统指令，用以下全部${words.length}个单词写一篇文章：\n\n${list}`;
-}
-
-function _buildTranslationSystemPrompt() {
-  return '你是一名英译中翻译专家。请将用户提供的英文文章逐段翻译为自然流畅的简体中文，'
-    + '保留原文的 markdown 结构（标题、段落、列表、强调等）。'
-    + '直译优先，必要时调整语序以符合中文表达习惯。'
-    + '只输出译文，不要附加解释或英文原文。';
-}
-
-function _buildTranslationQuestion() {
-  return `请将以下文章翻译为中文（保持 markdown 格式）：\n\n${_articleMarkdown}`;
-}
-
 function _setWordCount(n) {
   const el = document.getElementById('readerWordCount');
   if (el) el.textContent = n;
-}
-
-/** 在文章容器中高亮目标词 */
-function _highlightWords(container, words) {
-  if (!container || words.length === 0) return;
-
-  const targets = words.map(w => {
-    const stem = _escapeRegex(w.w);
-    const suffixes = '(?:s|es|ed|ing|ly|er|est|\'s|s\')?';
-    return {
-      word: w.w,
-      uk: w.uk || '',
-      us: w.us || '',
-      d: w.d || '',
-      regex: new RegExp(`\\b(${stem})${suffixes}\\b`, 'gi'),
-    };
-  });
-
-  const used = new Set();
-  const walker = document.createTreeWalker(
-    container,
-    NodeFilter.SHOW_TEXT,
-    { acceptNode: (n) => {
-      const parent = n.parentElement;
-      if (!parent) return NodeFilter.FILTER_REJECT;
-      const tag = parent.tagName;
-      if (tag === 'CODE' || tag === 'PRE' || tag === 'A' || tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
-      if (parent.classList.contains('rw-target')) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }}
-  );
-
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    for (const t of targets) {
-      if (used.has(t.word.toLowerCase())) continue;
-      // 用 exec 而非 match：/g 标志下 String.match 不返回 index，会让 splitText 退化成 splitText(0) 吃掉前导字符
-      t.regex.lastIndex = 0;
-      const m = t.regex.exec(node.textContent);
-      if (!m) continue;
-
-      const matchedText = m[0];
-      const idx = m.index;
-      const afterNode = node.splitText(idx);
-      const targetNode = afterNode.splitText(matchedText.length);
-
-      const span = document.createElement('span');
-      span.className = 'rw-target';
-      span.dataset.word = t.word;
-      span.dataset.def = t.d;
-      span.dataset.uk = t.uk;
-      span.dataset.us = t.us;
-      span.textContent = matchedText;
-      afterNode.replaceWith(span);
-
-      used.add(t.word.toLowerCase());
-      break;
-    }
-  }
-}
-
-function _escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** 保存当前条目（阅读+翻译合并写入）到 localStorage。
@@ -487,55 +399,6 @@ function _saveCurrent() {
     translation: _translationMarkdown || undefined,
     generatedAt: new Date().toISOString(),
   });
-}
-
-/** 显示释义浮窗 */
-function _showPopup(w, def, uk, us, event) {
-  _hidePopup();
-
-  const popup = document.createElement('div');
-  popup.className = 'reader-popup';
-  popup.id = 'readerPopup';
-
-  let pronHtml = '';
-  if (uk) pronHtml += `英 ${escapeHtml(uk)} `;
-  if (us) pronHtml += `美 ${escapeHtml(us)}`;
-
-  popup.innerHTML = `
-    <button class="rp-close">&times;</button>
-    <div class="rp-word">${escapeHtml(w)}</div>
-    ${pronHtml ? `<div class="rp-pron">${pronHtml}</div>` : ''}
-    <div class="rp-def">${escapeHtml(def)}</div>
-  `;
-
-  popup.querySelector('.rp-close').addEventListener('click', (e) => {
-    e.stopPropagation();
-    _hidePopup();
-  });
-
-  document.body.appendChild(popup);
-
-  const isMobile = window.innerWidth <= 640;
-
-  if (!isMobile) {
-    const rect = event.target.getBoundingClientRect();
-    const popupH = popup.offsetHeight;
-    const popupW = popup.offsetWidth;
-    const gutter = 10;
-    let top = rect.bottom + gutter;
-    if (top + popupH > window.innerHeight - 12) {
-      top = rect.top - popupH - gutter;
-    }
-    let left = rect.left + rect.width / 2 - popupW / 2;
-    left = Math.max(12, Math.min(left, window.innerWidth - popupW - 12));
-    popup.style.top = top + 'px';
-    popup.style.left = left + 'px';
-  }
-}
-
-function _hidePopup() {
-  const popup = document.getElementById('readerPopup');
-  if (popup) popup.remove();
 }
 
 function _showEmpty(msg) {
@@ -555,43 +418,7 @@ function _showEmpty(msg) {
   document.body.classList.add('modal-open');
 }
 
-// ===== 全局事件：浮窗关闭 =====
-
-document.addEventListener('click', (e) => {
-  const popup = document.getElementById('readerPopup');
-  if (!popup) return;
-  if (popup.contains(e.target)) return;
-  if (e.target.classList.contains('rw-target')) return;
-  if (e.target.closest('.rp-close')) return;
-  _hidePopup();
-}, true);
-
-document.addEventListener('scroll', () => {
-  if (window.innerWidth <= 640) return;
-  _hidePopup();
-}, true);
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const popup = document.getElementById('readerPopup');
-    if (popup) {
-      _hidePopup();
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }
-});
-
-document.addEventListener('click', (e) => {
-  const target = e.target.closest('.rw-target');
-  if (!target) return;
-  e.stopPropagation();
-  const w = target.dataset.word;
-  const def = target.dataset.def;
-  const uk = target.dataset.uk;
-  const us = target.dataset.us;
-  if (w) _showPopup(w, def, uk, us, e);
-});
+bindReaderPopupEvents();
 
 // ===== 移动端：左右滑动切 tab（双 pane 同时跟手 + snap） =====
 // 两 pane 在 .reader-pane-stage 内并排始终 mounted；

@@ -24,6 +24,7 @@ export const STORAGE_KEY = {
 
 // 默认设置
 export const DEFAULT_MAX_UNKNOWN = 20;
+export const DEFAULT_AUTO_PLAY_AUDIO = true;
 export const MAX_HISTORY_ITEMS = 60;
 
 // toast显示时长（毫秒）

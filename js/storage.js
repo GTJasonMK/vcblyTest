@@ -1,6 +1,63 @@
 // ========== localStorage 读写封装 ==========
 
-import { STORAGE_KEY, DEFAULT_MAX_UNKNOWN, MAX_HISTORY_ITEMS } from './constants.js';
+import { STORAGE_KEY, DEFAULT_MAX_UNKNOWN, DEFAULT_AUTO_PLAY_AUDIO, MAX_HISTORY_ITEMS } from './constants.js';
+
+const AI_DETAIL_CACHE_PREFIX = 'vcbly_ai_';
+const EXAMPLE_CACHE_PREFIX = 'vcbly_examples_';
+
+function getAiDetailCacheKey(word, tab) {
+  return `${AI_DETAIL_CACHE_PREFIX}${word}_${tab}`;
+}
+
+function getExampleCacheKey(word) {
+  return `${EXAMPLE_CACHE_PREFIX}${word}`;
+}
+
+function isExtraCacheKey(key) {
+  return Boolean(key && (key.startsWith(AI_DETAIL_CACHE_PREFIX) || key.startsWith(EXAMPLE_CACHE_PREFIX)));
+}
+
+function collectExtraCache() {
+  const cache = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (isExtraCacheKey(key)) cache[key] = localStorage.getItem(key);
+    }
+  } catch {}
+  return cache;
+}
+
+function clearExtraCache() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (isExtraCacheKey(key)) localStorage.removeItem(key);
+    }
+  } catch {}
+}
+
+function restoreExtraCache(cacheData) {
+  if (!cacheData || typeof cacheData !== 'object') return;
+  try {
+    for (const [key, val] of Object.entries(cacheData)) {
+      if (isExtraCacheKey(key)) localStorage.setItem(key, val);
+    }
+  } catch {}
+}
+
+function normalizeSettings(raw = {}, fallback = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const fallbackSource = fallback && typeof fallback === 'object' ? fallback : {};
+  const maxUnknownSource = source.maxUnknown ?? fallbackSource.maxUnknown;
+  const maxUnknown = Number.isFinite(Number(maxUnknownSource))
+    ? Math.max(1, Math.floor(Number(maxUnknownSource)))
+    : DEFAULT_MAX_UNKNOWN;
+  const autoPlayAudio = typeof source.autoPlayAudio === 'boolean'
+    ? source.autoPlayAudio
+    : (typeof fallbackSource.autoPlayAudio === 'boolean' ? fallbackSource.autoPlayAudio : DEFAULT_AUTO_PLAY_AUDIO);
+  return { maxUnknown, autoPlayAudio };
+}
 
 /** 读取设置 */
 export function loadSettings() {
@@ -8,15 +65,17 @@ export function loadSettings() {
     const raw = localStorage.getItem(STORAGE_KEY.SETTINGS);
     if (raw) {
       const s = JSON.parse(raw);
-      return { maxUnknown: s.maxUnknown || DEFAULT_MAX_UNKNOWN };
+      return normalizeSettings(s);
     }
   } catch { /* 忽略解析错误，返回默认值 */ }
-  return { maxUnknown: DEFAULT_MAX_UNKNOWN };
+  return normalizeSettings();
 }
 
 /** 保存设置 */
 export function saveSettings(settings) {
-  localStorage.setItem(STORAGE_KEY.SETTINGS, JSON.stringify(settings));
+  const normalized = normalizeSettings(settings, loadSettings());
+  localStorage.setItem(STORAGE_KEY.SETTINGS, JSON.stringify(normalized));
+  return normalized;
 }
 
 /** 读取历史记录 */
@@ -47,15 +106,7 @@ export function clearAll() {
   localStorage.removeItem(STORAGE_KEY.AI_CONFIG);
   localStorage.removeItem(STORAGE_KEY.READER_ARTICLES);
   clearSession();
-  // 清空 AI 缓存 + 例句缓存
-  try {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_'))) {
-        localStorage.removeItem(key);
-      }
-    }
-  } catch {}
+  clearExtraCache();
 }
 
 // ===== 每词答题统计（加权随机用） =====
@@ -190,6 +241,41 @@ export function saveAiConfig(config) {
   localStorage.setItem(STORAGE_KEY.AI_CONFIG, JSON.stringify(config));
 }
 
+// ===== AI 详解与例句缓存 =====
+
+export function loadAiDetailCache(word, tab) {
+  try {
+    const raw = localStorage.getItem(getAiDetailCacheKey(word, tab));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+export function saveAiDetailCache(word, tab, text) {
+  try {
+    localStorage.setItem(getAiDetailCacheKey(word, tab), JSON.stringify({
+      text,
+      word,
+      tab,
+      time: Date.now(),
+    }));
+    return true;
+  } catch { return false; }
+}
+
+export function loadExampleCache(word) {
+  try {
+    const raw = localStorage.getItem(getExampleCacheKey(word));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+export function saveExampleCache(word, examples) {
+  try {
+    localStorage.setItem(getExampleCacheKey(word), JSON.stringify(examples));
+    return true;
+  } catch { return false; }
+}
+
 // ===== 全量数据导入导出 =====
 
 /** 校验单条历史记录形状：缺关键字段则丢弃 */
@@ -229,16 +315,7 @@ function sanitizeWordStats(raw) {
 export function exportAll() {
   const history = loadHistory();
   const wordStats = loadWordStats();
-  // 收集 AI 缓存 + 例句缓存
-  const extraCache = {};
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_'))) {
-        extraCache[key] = localStorage.getItem(key);
-      }
-    }
-  } catch {}
+  const extraCache = collectExtraCache();
   const session = loadSession();
   const readerArticles = loadReaderArticles();
   if (history.length === 0 && Object.keys(wordStats).length === 0 && Object.keys(extraCache).length === 0 && !session && Object.keys(readerArticles).length === 0) {
@@ -280,14 +357,7 @@ export function importAll(jsonText) {
       // 与新格式保持一致的"导入=替换"语义：清掉非历史的其他数据
       clearWordStats();
       clearSession();
-      try {
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_'))) {
-            localStorage.removeItem(key);
-          }
-        }
-      } catch {}
+      clearExtraCache();
       saveHistory(cleaned);
       return cleaned.length;
     }
@@ -305,22 +375,13 @@ export function importAll(jsonText) {
     }
 
     // 恢复设置（仅当新数据中存在合法值时）
-    if (data.settings && Number.isFinite(Number(data.settings.maxUnknown))) {
-      const maxUnknown = Math.max(1, Math.floor(Number(data.settings.maxUnknown)));
-      saveSettings({ maxUnknown });
+    if (data.settings && typeof data.settings === 'object') {
+      saveSettings(data.settings);
     }
 
     // 恢复 AI 缓存 + 例句缓存
     const cacheData = data.aiCache || data.extraCache;
-    if (cacheData && typeof cacheData === 'object') {
-      try {
-        for (const [key, val] of Object.entries(cacheData)) {
-          if (key.startsWith('vcbly_ai_') || key.startsWith('vcbly_examples_')) {
-            localStorage.setItem(key, val);
-          }
-        }
-      } catch {}
-    }
+    restoreExtraCache(cacheData);
 
     // 恢复主题偏好
     if (data.theme && ['dark', 'light', 'auto'].includes(data.theme)) {

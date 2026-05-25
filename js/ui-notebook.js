@@ -1,7 +1,6 @@
-// ========== 错词本面板 + 首页错词卡片摘要 ==========
-// 包含：日历视图、Tab 切换（日历/趋势）、错词回顾分栏、移动手柄按钮、
-// 柱状图（错词率趋势）。键盘/触屏导航通过 window.* 暴露给 main.js 的 keydown
-// 与 HTML inline onclick 使用。
+// ========== 错词本面板 ==========
+// 包含：日历视图、Tab 切换、错词回顾分栏、移动手柄按钮。
+// 键盘/触屏导航通过 window.* 暴露给全局快捷键与 HTML inline onclick 使用。
 
 import { allWords, session } from './state.js';
 import { getAudioPath, playWordAudio } from './audio.js';
@@ -12,10 +11,11 @@ import {
   renderAudioButton,
   renderNotebookGamepadControls,
   toast,
-  wrongCountOf,
 } from './ui-common.js';
 import { openReaderWithWords, viewReaderArticle } from './ui-reader.js';
 import { getReaderArticle } from './storage.js';
+import { renderNotebookTrendChart } from './ui-notebook-chart.js';
+import { resolveWordDef } from './ui-word-utils.js';
 
 // ===== 模块状态 =====
 
@@ -24,49 +24,6 @@ let _nbHistory = [];                // 缓存历史数据
 let _reviewDaySessions = [];        // 当天所有测试会话
 let _reviewSessionIdx = 0;          // 当前选中的会话索引
 let _reviewWordIdx = -1;            // 当前选中的错词索引
-
-// ===== 首页错词本卡片摘要 =====
-
-export function renderHomeNotebookSummary(historyList) {
-  const el = document.getElementById('homeNotebookSummary');
-  const preview = document.getElementById('nbMiniPreview');
-  if (!el) return;
-  if (!Array.isArray(historyList) || historyList.length === 0) {
-    el.textContent = '暂无测试记录';
-    if (preview) preview.innerHTML = '';
-    return;
-  }
-  // 找到 date 最大的条目作为"最近"，避免 importAll 后 date 字段非法导致末位顺序失真
-  const last = historyList.reduce((acc, h) => {
-    const ts = new Date(h?.date).getTime();
-    if (!Number.isFinite(ts)) return acc;
-    if (!acc || ts > acc.ts) return { entry: h, ts };
-    return acc;
-  }, null);
-  const totalWrong = historyList.reduce((sum, h) => sum + wrongCountOf(h), 0);
-  if (last) {
-    const lastDate = new Date(last.entry.date);
-    const dateStr = `${lastDate.getMonth() + 1}月${lastDate.getDate()}日`;
-    el.textContent = `${historyList.length} 次测试 · ${totalWrong} 个错词 · 最近 ${dateStr}`;
-  } else {
-    el.textContent = `${historyList.length} 次测试 · ${totalWrong} 个错词`;
-  }
-
-  if (preview) {
-    // 按 date 排序后取最近 3 条，避免 importAll 后顺序乱掉时 preview 显示错日期
-    const sorted = [...historyList]
-      .map(h => ({ h, ts: new Date(h?.date).getTime() }))
-      .filter(x => Number.isFinite(x.ts))
-      .sort((a, b) => b.ts - a.ts)
-      .slice(0, 3)
-      .map(x => x.h);
-    preview.innerHTML = sorted.map(h => {
-      const d = new Date(h.date);
-      const ds = Number.isFinite(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()}` : '?';
-      return `<span style="margin:0 2px">${ds} 错${wrongCountOf(h)}词</span>`;
-    }).join('<span style="color:var(--border);margin:0 2px">|</span>');
-  }
-}
 
 // ===== 错词本入口 =====
 
@@ -84,7 +41,7 @@ export function renderNotebook(historyList) {
   document.getElementById('nbCalRange').textContent = `${calYear}年${calMonth + 1}月`;
 
   renderCalendar(historyList);
-  renderBarChart(historyList);
+  renderNotebookTrendChart(historyList);
   renderReviewBody(historyList, calSelected);
 
   // 默认显示日历tab
@@ -320,11 +277,6 @@ function showNotebookWordDetail(sessionIdx, wordIdx, options = {}) {
   if (!session || !session.words) return;
   const w = session.words[wordIdx];
   if (!w) return;
-  // 旧记录释义缺失时，从当前词库回补
-  if (w.d && w.d.includes('找不到解释')) {
-    const cur = allWords.find(aW => aW.w === w.w);
-    if (cur) w.d = cur.d;
-  }
 
   _reviewSessionIdx = sessionIdx;
   _reviewWordIdx = wordIdx;
@@ -357,7 +309,7 @@ function showNotebookWordDetail(sessionIdx, wordIdx, options = {}) {
       </div>
       ${renderNotebookGamepadControls()}
     </div>
-    <div class="rw-detail-def">${escapeHtml(w.d)}</div>
+    <div class="rw-detail-def">${escapeHtml(resolveWordDef(w))}</div>
   `;
   updateNotebookMobileControls();
   preloadWordWindow(session.words, wordIdx, 3);
@@ -440,144 +392,6 @@ window.notebookPrevSession = () => moveNotebookSession(-1);
 window.notebookNextSession = () => moveNotebookSession(1);
 window.notebookPlaySelectedAudio = (button) => playNotebookSelectedAudio(button);
 
-// ===== 底部卡片：柱状图（错词率趋势） =====
-
-function renderBarChart(historyList) {
-  const canvas = document.getElementById('nbChart');
-  const summary = document.getElementById('nbChartSummary');
-  if (!canvas || !summary) return;
-
-  if (historyList.length < 2) {
-    summary.textContent = '至少需要 2 次测试才能显示趋势图';
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    return;
-  }
-
-  // 数据：每次测试的 错词数/测词数 比值
-  const data = historyList.map((h, i) => ({
-    x: i + 1,
-    ratio: (h.testedCount || 0) > 0 ? (h.words ? h.words.length : 0) / (h.testedCount || 1) : 0,
-    wrong: h.words ? h.words.length : 0,
-    tested: h.testedCount || 0,
-  }));
-
-  // 计算趋势：比较前一半和后一半的平均值
-  const mid = Math.floor(data.length / 2);
-  const firstHalf = data.slice(0, mid).reduce((s, d) => s + d.ratio, 0) / mid;
-  const secondHalf = data.slice(mid).reduce((s, d) => s + d.ratio, 0) / (data.length - mid);
-  const trendDown = secondHalf < firstHalf;
-  const trendText = trendDown
-    ? `错词率从 ${(firstHalf * 100).toFixed(0)}% 降至 ${(secondHalf * 100).toFixed(0)}%，学习效果显著！`
-    : `错词率保持平稳，继续加油！`;
-  summary.textContent = trendText;
-
-  // 画布尺寸
-  const dpr = window.devicePixelRatio || 1;
-  const container = canvas.parentElement;
-  const rect = container.getBoundingClientRect();
-  const w = rect.width - 32 || 600;
-  const h = 220;
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
-
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, w, h);
-
-  const pad = { top: 20, right: 16, bottom: 36, left: 44 };
-  const pw = w - pad.left - pad.right;
-  const ph = h - pad.top - pad.bottom;
-
-  const maxRatio = Math.max(...data.map(d => d.ratio), 0.1);
-  const yMax = Math.min(1, Math.ceil(maxRatio * 10) / 10 + 0.1);
-
-  const barWidth = Math.max(4, Math.min(24, pw / data.length * 0.6));
-  const gap = pw / data.length;
-
-  const yScale = v => pad.top + ph - (v / yMax) * ph;
-
-  // 坐标轴
-  const borderColor = getComputedStyle(document.body).getPropertyValue('--border').trim() || '#e0d5c1';
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pad.left, pad.top);
-  ctx.lineTo(pad.left, pad.top + ph);
-  ctx.lineTo(pad.left + pw, pad.top + ph);
-  ctx.stroke();
-
-  // Y轴刻度 (%)
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-light').trim() || '#8b7d6b';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'right';
-  const ySteps = 5;
-  for (let i = 0; i <= ySteps; i++) {
-    const v = (yMax / ySteps) * i;
-    const y = yScale(v);
-    ctx.fillText((v * 100).toFixed(0) + '%', pad.left - 6, y + 3);
-    ctx.beginPath();
-    ctx.moveTo(pad.left, y);
-    ctx.lineTo(pad.left + pw, y);
-    ctx.strokeStyle = 'rgba(128,128,128,0.08)';
-    ctx.stroke();
-  }
-
-  // X轴刻度（每5次标一个）
-  ctx.textAlign = 'center';
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-light').trim() || '#8b7d6b';
-  ctx.font = '9px sans-serif';
-  const xStep = Math.max(1, Math.floor(data.length / 10));
-  data.forEach((d, i) => {
-    if (i % xStep === 0 || i === data.length - 1) {
-      const x = pad.left + i * gap + gap / 2;
-      ctx.fillText(d.x, x, pad.top + ph + 16);
-    }
-  });
-
-  // 柱状图
-  const barColor = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#c0392b';
-  const greenColor = getComputedStyle(document.body).getPropertyValue('--green').trim() || '#27ae60';
-
-  data.forEach((d, i) => {
-    const x = pad.left + i * gap + (gap - barWidth) / 2;
-    const barH = Math.max(2, (d.ratio / yMax) * ph);
-    const y = pad.top + ph - barH;
-
-    // 渐变色：根据比值从绿到红
-    const ratio = d.ratio;
-    if (ratio < 0.3) ctx.fillStyle = greenColor;
-    else if (ratio < 0.6) ctx.fillStyle = '#e67e22';
-    else ctx.fillStyle = barColor;
-
-    ctx.fillRect(x, y, barWidth, barH);
-
-    // 柱顶标注比值
-    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-light').trim() || '#8b7d6b';
-    ctx.font = '8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText((d.ratio * 100).toFixed(0) + '%', x + barWidth / 2, y - 4);
-  });
-
-  // 趋势线
-  if (data.length >= 3) {
-    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#c0392b';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    data.forEach((d, i) => {
-      const px = pad.left + i * gap + gap / 2;
-      const py = yScale(d.ratio);
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    });
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-}
-
 // ===== Tab 切换 =====
 function switchNbTab(tab) {
   const tabs = ['nbTabCal', 'nbTabChart'];
@@ -595,7 +409,7 @@ function switchNbTab(tab) {
   } else if (tab === 'chart') {
     document.getElementById('nbTabChart').classList.add('active');
     document.getElementById('nbTabContentChart').style.display = 'flex';
-    renderBarChart(_nbHistory);
+    renderNotebookTrendChart(_nbHistory);
   }
 }
 window.switchNbTab = switchNbTab;

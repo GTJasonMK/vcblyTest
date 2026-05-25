@@ -1,6 +1,6 @@
 // ========== 全局状态管理（单例） ==========
 
-import { DEFAULT_MAX_UNKNOWN } from './constants.js';
+import { DEFAULT_AUTO_PLAY_AUDIO, DEFAULT_MAX_UNKNOWN } from './constants.js';
 import { loadSettings } from './storage.js';
 
 /** 全部单词数据（从 WORDS_DATA 全局变量加载） */
@@ -62,9 +62,20 @@ export function restoreSession(saved) {
 }
 
 /** 更新设置并同步到session */
-export function updateSettings(maxUnknown) {
-  settings.maxUnknown = maxUnknown;
-  session.maxUnknown = maxUnknown;
+export function updateSettings(nextSettings) {
+  const patch = typeof nextSettings === 'number'
+    ? { maxUnknown: nextSettings }
+    : (nextSettings || {});
+
+  if (Number.isFinite(Number(patch.maxUnknown))) {
+    settings.maxUnknown = Math.max(1, Math.floor(Number(patch.maxUnknown)));
+    session.maxUnknown = settings.maxUnknown;
+  }
+  if (typeof patch.autoPlayAudio === 'boolean') {
+    settings.autoPlayAudio = patch.autoPlayAudio;
+  } else if (typeof settings.autoPlayAudio !== 'boolean') {
+    settings.autoPlayAudio = DEFAULT_AUTO_PLAY_AUDIO;
+  }
 }
 
 /** 获取当前要测试的单词 */

@@ -1,140 +1,23 @@
 // ========== 测试会话核心逻辑 ==========
 
-import { allWords, session, getCurrentWord, getCurrentWordIndex, resetSession, restoreSession } from './state.js';
+import { allWords, session, settings, getCurrentWord, getCurrentWordIndex, resetSession, restoreSession } from './state.js';
 import { updateSettings } from './state.js';
 import { saveSettings, loadHistory, saveHistory, saveSession, loadSession, clearSession, loadWordStats, recordWordResult } from './storage.js';
 import * as UI from './ui.js';
 import { autoplayWordAudio, playWordAudio, preloadWordAudioList } from './audio.js';
+import {
+  buildWeightedOrder,
+  generateOptions,
+  getWordProbabilities as getPlannerWordProbabilities,
+  shuffle,
+} from './session-planner.js';
 
-/** 计算每词基础权重（基于历史统计）
- *  公式：2.5 + (wrong / tested) * 1.5
- *  → 全对最低 2.5，全错最高 4.0，未测过的新词为 5.0（最优先抽中）；
- *  权重越高越容易被抽到。 */
-export function computeBaseWeight(stats, idx) {
-  const s = stats[idx];
-  const tested = Number(s?.tested);
-  if (!Number.isFinite(tested) || tested <= 0) return 5.0;
-  const wrongRaw = Number(s?.wrong);
-  const wrong = Number.isFinite(wrongRaw) ? Math.max(0, Math.min(wrongRaw, tested)) : 0;
-  return 2.5 + (wrong / tested) * 1.5;
-}
+export { computeBaseWeight } from './session-planner.js';
 
 /** 获取所有单词的归一化概率（和为1），供可视化使用 */
 export function getWordProbabilities() {
   const stats = loadWordStats();
-  const weights = allWords.map((_, i) => computeBaseWeight(stats, i));
-  const total = weights.reduce((a, b) => a + b, 0);
-  return weights.map(w => w / total);
-}
-
-/** 按权重比例无放回抽样（轮盘赌算法 + softmax 放大差距）
- *  每轮先对剩余词的权重做 softmax(T=0.5)，然后按概率落点。
- *  优化：merge maxW+exp 为一个循环，局部数组代替属性访问。 */
-function buildWeightedOrder() {
-  const stats = loadWordStats();
-  const pool = allWords.map((_, i) => ({
-    idx: i,
-    weight: computeBaseWeight(stats, i),
-  }));
-
-  const order = [];
-  // 局部数组缓存 exp 值，避免对象属性访问开销
-  const expArr = new Array(pool.length);
-  let len = pool.length;
-
-  while (len > 0) {
-    // 一轮循环完成：找 maxW + 算 exp + 求和
-    let maxW = -Infinity;
-    let expSum = 0;
-    for (let i = 0; i < len; i++) {
-      const w = pool[i].weight;
-      if (w > maxW) maxW = w;
-    }
-    for (let i = 0; i < len; i++) {
-      const e = Math.exp((pool[i].weight - maxW) / 0.5);
-      expArr[i] = e;
-      expSum += e;
-    }
-
-    const rand = Math.random();
-    let acc = 0;
-    let picked = false;
-    for (let i = 0; i < len; i++) {
-      acc += expArr[i] / expSum;
-      if (rand < acc) {
-        order.push(pool[i].idx);
-        // swap-and-pop（O(1) 移除，同时交换 expArr 保持同步）
-        const last = len - 1;
-        if (i !== last) {
-          const tmp = pool[i]; pool[i] = pool[last]; pool[last] = tmp;
-          const etmp = expArr[i]; expArr[i] = expArr[last]; expArr[last] = etmp;
-        }
-        len--;
-        picked = true;
-        break;
-      }
-    }
-    // 浮点安全兜底
-    if (!picked && len > 0) {
-      order.push(pool[len - 1].idx);
-      len--;
-    }
-  }
-  return order;
-}
-
-/** Fisher-Yates洗牌 */
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/** 为当前单词生成4个选项（1个正确释义+3个随机错误释义），返回选项数组 */
-function generateOptions(correctIdx) {
-  const correctDef = allWords[correctIdx].d;
-  const total = allWords.length;
-
-  // 拒绝采样：随机抽 3 个错误索引（避免 6000 元素 shuffle 的 GC 压力）。
-  // 同时按释义文本去重，避免词库中存在同义/同译条目导致 4 个选项里出现重复文本。
-  const wrongIndices = [];
-  const pickedIdx = new Set();
-  const seenDef = new Set([correctDef]);
-  let safety = total * 4; // 防御：极端数据下避免死循环
-  while (wrongIndices.length < 3 && safety-- > 0) {
-    const r = Math.floor(Math.random() * total);
-    if (r === correctIdx || pickedIdx.has(r)) continue;
-    const def = allWords[r].d;
-    if (seenDef.has(def)) continue;
-    pickedIdx.add(r);
-    seenDef.add(def);
-    wrongIndices.push(r);
-  }
-  // 兜底：词库释义独特数 < 4 时（理论极小概率），允许重复以填满 4 项
-  while (wrongIndices.length < 3) {
-    const r = Math.floor(Math.random() * total);
-    if (r !== correctIdx && !pickedIdx.has(r)) {
-      pickedIdx.add(r);
-      wrongIndices.push(r);
-    }
-  }
-
-  const options = [
-    { text: correctDef, isCorrect: true },
-    ...wrongIndices.map(i => ({ text: allWords[i].d, isCorrect: false })),
-  ];
-
-  // Fisher-Yates 洗 4 个选项
-  for (let i = options.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [options[i], options[j]] = [options[j], options[i]];
-  }
-  const correctOptIdx = options.findIndex(o => o.isCorrect);
-
-  return { options, correctOptIdx };
+  return getPlannerWordProbabilities(allWords, stats);
 }
 
 /** 自动保存当前测试进度（快速测试不保存） */
@@ -158,6 +41,7 @@ function preloadTestAudioWindow() {
 }
 
 function autoplayCurrentTestWord() {
+  if (settings.autoPlayAudio === false) return;
   const idx = getCurrentWordIndex();
   const word = allWords[idx];
   if (!word) return;
@@ -173,15 +57,14 @@ export function startSession() {
 
   clearSession(); // 丢弃旧进度
 
-  const maxUnknown = UI.getMaxUnknownInput();
-  saveSettings({ maxUnknown });
-  updateSettings(maxUnknown);
+  const savedSettings = saveSettings(UI.getHomeSettingsInput());
+  updateSettings(savedSettings);
   resetSession();
 
   session.active = true;
-  session.order = buildWeightedOrder();
+  session.order = buildWeightedOrder(allWords, loadWordStats());
   session.cursor = 0;
-  session.maxUnknown = maxUnknown;
+  session.maxUnknown = savedSettings.maxUnknown;
 
   UI.showPanel('test');
   showCurrentWord();
@@ -201,9 +84,8 @@ export function startFilteredSession(indices) {
 
   clearSession();
 
-  const maxUnknown = UI.getMaxUnknownInput();
-  saveSettings({ maxUnknown });
-  updateSettings(maxUnknown);
+  const savedSettings = saveSettings(UI.getHomeSettingsInput());
+  updateSettings(savedSettings);
   resetSession();
 
   session.active = true;
@@ -211,7 +93,7 @@ export function startFilteredSession(indices) {
   // 对指定索引做随机洗牌
   session.order = shuffle(indices);
   session.cursor = 0;
-  session.maxUnknown = Math.min(maxUnknown, indices.length);
+  session.maxUnknown = Math.min(savedSettings.maxUnknown, indices.length);
 
   UI.showPanel('test');
   showCurrentWord();
@@ -249,7 +131,7 @@ export function resumeSession() {
   } else {
     // 正常恢复：重新生成选项
     const idx = getCurrentWordIndex();
-    const { options, correctOptIdx } = generateOptions(idx);
+    const { options, correctOptIdx } = generateOptions(allWords, idx);
     session.options = options;
     session.correctIdx = correctOptIdx;
     session.answered = false;
@@ -266,7 +148,7 @@ function showCurrentWord() {
   UI.renderTestWord();
 
   const idx = getCurrentWordIndex();
-  const { options, correctOptIdx } = generateOptions(idx);
+  const { options, correctOptIdx } = generateOptions(allWords, idx);
   session.options = options;
   session.correctIdx = correctOptIdx;
   session.answered = false;
@@ -488,6 +370,7 @@ function preloadReviewAudioWindow() {
 }
 
 function autoplayCurrentReviewWord() {
+  if (settings.autoPlayAudio === false) return;
   const word = session.todayUnknown[reviewIndex];
   if (!word) return;
   autoplayWordAudio(word, word.idx, document.getElementById('reviewAudioBtn'));

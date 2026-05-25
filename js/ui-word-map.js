@@ -8,6 +8,7 @@ import { playWordAudio, preloadWordAudio } from './audio.js';
 import { escapeHtml, toast } from './ui-common.js';
 import { startFilteredSession } from './session.js';
 import { positionAchievePanel } from './ui-badges.js';
+import { loadWordStats } from './storage.js';
 
 const MAP_CELL = 8;
 const MAP_GAP = 1;
@@ -19,9 +20,7 @@ let _mapRangeMax = 1;
 
 /** 计算每词绝对正确率（未测过为 -1） */
 function computeCorrectRates() {
-  const stats = (() => {
-    try { return JSON.parse(localStorage.getItem('vocab_word_stats') || '{}'); } catch { return {}; }
-  })();
+  const stats = loadWordStats();
   return allWords.map((_, i) => {
     const s = stats[i];
     if (!s || !s.tested || s.tested <= 0) return -1;
