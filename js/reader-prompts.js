@@ -42,6 +42,37 @@ export function buildContextReaderQuestion(words) {
   return `请根据以上系统指令，把以下全部${words.length}个目标词自然嵌入一篇中文语境短文：\n\n${list}`;
 }
 
+export function buildReaderContinuationSystemPrompt(isContextMode = false) {
+  if (isContextMode) {
+    return '你是一个英语词汇语境训练设计师。用户已经有一篇中文语境短文，但仍有目标词没有出现。\n'
+      + '严格要求：\n'
+      + '1. 不要重写原文，只续写 1-2 个自然段。\n'
+      + '2. 续写内容必须承接原文语境，并自然包含用户列出的全部漏词。\n'
+      + '3. 漏词必须以英文原词出现在中文句子中；除漏词外尽量使用中文。\n'
+      + '4. 禁止列单词表、解释词义、加粗、使用反引号、方括号或任何特殊标注。\n'
+      + '5. 只输出可直接追加到原文末尾的 markdown 段落，不要输出标题或说明。';
+  }
+
+  return '你是一个英语教学专家。用户已经有一篇英文阅读文章，但仍有目标词没有出现。\n'
+    + '严格要求：\n'
+    + '1. 不要重写原文，只续写 1-2 个自然英文段落。\n'
+    + '2. 续写内容必须承接原文语境，并自然包含用户列出的全部漏词。\n'
+    + '3. 禁止列单词表、解释词义、加粗、使用反引号、方括号或任何特殊标注。\n'
+    + '4. 只输出可直接追加到原文末尾的 markdown 段落，不要输出标题、翻译或说明。';
+}
+
+export function buildReaderContinuationQuestion(articleMarkdown, missingWords) {
+  const list = missingWords.map((word, index) => {
+    let line = `${index + 1}. **${word.w || word}**`;
+    if (word.d) line += ` — ${word.d}`;
+    if (word.uk) line += ` 英/${word.uk}/`;
+    if (word.us) line += ` 美/${word.us}/`;
+    return line;
+  }).join('\n');
+
+  return `当前文章如下：\n\n${articleMarkdown}\n\n请只续写一小段，并自然补入以下全部漏词：\n\n${list}`;
+}
+
 export function buildTranslationSystemPrompt() {
   return '你是一名英译中翻译专家。请将用户提供的英文文章逐段翻译为自然流畅的简体中文，'
     + '保留原文的 markdown 结构（标题、段落、列表、强调等）。'

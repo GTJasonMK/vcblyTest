@@ -9,18 +9,21 @@ import { saveReaderArticle, getReaderArticle } from './storage.js';
 import {
   buildContextReaderQuestion,
   buildContextReaderSystemPrompt,
+  buildReaderContinuationQuestion,
+  buildReaderContinuationSystemPrompt,
   buildReaderQuestion,
   buildReaderSystemPrompt,
   buildTranslationQuestion,
   buildTranslationSystemPrompt,
 } from './reader-prompts.js';
-import { highlightReaderWords } from './reader-highlight.js';
+import { findMissingReaderWords, highlightReaderWords } from './reader-highlight.js';
 import { bindReaderPopupEvents, hideReaderPopup } from './reader-popup.js';
 
 // ===== 模块状态 =====
 
 const READER_MODE_ENGLISH = 'english';
 const READER_MODE_CONTEXT = 'context';
+const MAX_CONTINUATION_ATTEMPTS = 2;
 
 let _readerWords = [];          // [{w, uk, us, d}]
 let _articleMarkdown = '';      // 阅读 tab 当前英文文章 markdown
@@ -199,7 +202,9 @@ function _beginReaderGeneration() {
   const begin = document.getElementById('readerBegin');
   const loading = document.getElementById('readerLoading');
   const loadingText = document.getElementById('readerLoadingText');
+  const empty = document.getElementById('readerEmpty');
   if (begin) begin.style.display = 'none';
+  if (empty) empty.style.display = 'none';
   if (loading) loading.style.display = 'flex';
   if (loadingText) loadingText.textContent = _isContextMode() ? 'AI 正在生成中文语境…' : 'AI 正在生成文章…';
 }
@@ -279,9 +284,21 @@ function _displayArticle(markdown) {
 
   if (loading) loading.style.display = 'none';
   article.style.display = '';
+  _renderArticle(article, markdown);
+  _updateRegenBtn();
+}
+
+function _renderArticle(article, markdown) {
   article.innerHTML = renderMarkdown(markdown);
   highlightReaderWords(article, _readerWords);
-  _updateRegenBtn();
+}
+
+function _joinMarkdown(base, addition) {
+  const cleanBase = (base || '').trimEnd();
+  const cleanAddition = (addition || '').trim();
+  if (!cleanBase) return cleanAddition;
+  if (!cleanAddition) return cleanBase;
+  return `${cleanBase}\n\n${cleanAddition}`;
 }
 
 /** 通用 AI 流式生成骨架：abort 旧 ctrl / 重置 UI / 处理流式 chunk / 错误兜底 / 释放 ctrl。
@@ -357,6 +374,7 @@ async function generateReaderArticle() {
   if (_articleCtrl) { try { _articleCtrl.abort(); } catch {} }
   hideReaderPopup();
   _articleMarkdown = '';
+  _hideArticleMissingNotice();
   const isContext = _isContextMode();
   if (isContext) {
     _translationMarkdown = '';
@@ -374,19 +392,125 @@ async function generateReaderArticle() {
     systemPrompt: isContext ? buildContextReaderSystemPrompt() : buildReaderSystemPrompt(),
     onChunkRender: (chunk) => {
       _articleMarkdown += chunk;
-      article.innerHTML = renderMarkdown(_articleMarkdown);
-      highlightReaderWords(article, _readerWords);
+      _renderArticle(article, _articleMarkdown);
       article.scrollTop = article.scrollHeight;
     },
     errorLabel: '文章生成',
   });
 
   if (!full) _articleMarkdown = '';
-  if (full && _articleMeta) _saveCurrent();
+  if (full) {
+    const missing = await _appendMissingWordContinuations();
+    if (missing.length === 0) {
+      _hideArticleMissingNotice();
+      if (_articleMeta) _saveCurrent();
+    } else {
+      _showArticleMissingNotice(missing);
+    }
+  }
   _syncReaderModeVisibility();
   _updateRegenBtn();
   // 用户可能在 article 流式期间已切到翻译 tab，文章完成后让翻译 pane 露出生成按钮
   if (_activeTab === 'translation' && !_isContextMode()) _syncTranslationPane();
+}
+
+async function _appendMissingWordContinuations() {
+  let missing = findMissingReaderWords(_articleMarkdown, _readerWords);
+  if (missing.length === 0) {
+    console.info('阅读文章目标词检查通过：无漏词');
+    return [];
+  }
+
+  const article = document.getElementById('readerArticle');
+  const loading = document.getElementById('readerLoading');
+  const loadingText = document.getElementById('readerLoadingText');
+  const empty = document.getElementById('readerEmpty');
+  if (!article || !loading) return missing;
+
+  for (let attempt = 1; attempt <= MAX_CONTINUATION_ATTEMPTS && missing.length > 0; attempt++) {
+    console.info('阅读文章检测到漏词，准备续写补入', missing.map(word => word.w || word));
+    _showArticleStatusNotice(`检测到漏词：${_formatReaderWordList(missing)}，正在续写补入…`);
+
+    const baseMarkdown = _articleMarkdown;
+    let addition = '';
+    let firstChunk = true;
+    const ctrl = new AbortController();
+    _articleCtrl = ctrl;
+
+    if (loadingText) loadingText.textContent = `AI 正在补入漏词（${missing.length} 个）…`;
+    loading.style.display = 'flex';
+
+    try {
+      const full = await askAi(
+        missing[0]?.w || _readerWords[0]?.w || 'continue',
+        {},
+        'explain',
+        buildReaderContinuationQuestion(baseMarkdown, missing),
+        (chunk) => {
+          if (ctrl.signal.aborted) return;
+          addition += chunk;
+          if (firstChunk) {
+            firstChunk = false;
+            loading.style.display = 'none';
+            if (empty) empty.style.display = 'none';
+          }
+          const preview = _joinMarkdown(baseMarkdown, addition);
+          article.style.display = '';
+          _renderArticle(article, preview);
+          article.scrollTop = article.scrollHeight;
+        },
+        buildReaderContinuationSystemPrompt(_isContextMode()),
+        ctrl.signal,
+      );
+
+      if (ctrl.signal.aborted) return missing;
+
+      const finalAddition = full || addition;
+      if (finalAddition) {
+        _articleMarkdown = _joinMarkdown(baseMarkdown, finalAddition);
+        article.style.display = '';
+        _renderArticle(article, _articleMarkdown);
+      }
+    } catch (err) {
+      loading.style.display = 'none';
+      if (ctrl.signal.aborted) return missing;
+      console.error('文章漏词续写失败', err);
+      return missing;
+    } finally {
+      if (_articleCtrl === ctrl) _articleCtrl = null;
+      loading.style.display = 'none';
+    }
+
+    missing = findMissingReaderWords(_articleMarkdown, _readerWords);
+  }
+
+  return missing;
+}
+
+function _formatReaderWordList(words) {
+  return words.map(word => word.w || word).filter(Boolean).join('、');
+}
+
+function _showArticleStatusNotice(message) {
+  const empty = document.getElementById('readerEmpty');
+  if (!empty) return;
+  empty.style.display = '';
+  empty.innerHTML = `<p>${escapeHtml(message)}</p>`;
+}
+
+function _showArticleMissingNotice(missing) {
+  const empty = document.getElementById('readerEmpty');
+  if (!empty || missing.length === 0) return;
+  const words = _formatReaderWordList(missing);
+  empty.style.display = '';
+  empty.innerHTML = `<p>仍有漏词：${escapeHtml(words)}</p><p style="font-size:0.8rem;color:var(--text-muted)">可以点击「换一篇」重新生成。</p>`;
+}
+
+function _hideArticleMissingNotice() {
+  const empty = document.getElementById('readerEmpty');
+  if (!empty) return;
+  empty.style.display = 'none';
+  empty.innerHTML = '';
 }
 
 /** 生成/重新生成中文译文（翻译 tab） */
